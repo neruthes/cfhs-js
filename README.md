@@ -44,9 +44,13 @@ Write a list of directories to be shared. Use absolute paths.
 Example:
 
 ```
-/tmp/cfhs-default
-/tmp/cfhs-default
+/tmp/cfhs-default:abcd
+/tmp/cfhs-new
 ```
+
+Optionally append `:abcd` at the end of a line to let it appear as `abcd`
+in the root index. In the example, the 2 directories will appear as `abcd` and
+`cfhs-new` in the root index.
 
 ### Config File: `tokens`
 

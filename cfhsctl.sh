@@ -21,12 +21,14 @@ function _createinstance() {
         return 1
     fi
     mkdir -p $CONFDIR/$ITNAME
+    mkdir -p $CONFDIR/$ITNAME/targets
     echo "Port=1453" > $CONFDIR/$ITNAME/conf
     printf "# Add a list of directories here...\n# Lines starting with # will be ignored.\n/tmp/cfhs-$ITNAME\n" > $CONFDIR/$ITNAME/dirs
+    printf '# Append ":abcd" to let it appear as "abcd" in the root index\n' >> $CONFDIR/$ITNAME/dirs
     LONGTIME="$(date -Is)"
     NOWYEAR="${LONGTIME:0:4}"
     NEWYEAR="$(($NOWYEAR + 10))"
-    SHORTTIME="${LONGTIME:4:19}"
+    SHORTTIME="${LONGTIME:4:15}"
     echo "114514,A,$(uuidgen),/,$NEWYEAR$SHORTTIME" > $CONFDIR/$ITNAME/tokens
 }
 function _mkdefault() {
@@ -94,19 +96,19 @@ case $SUBCOMMAND in
         _ls
         ;;
     n|new )
-        _new ARG0
+        _new $ARG0
         ;;
     s|start )
-        _start ARG0
+        _start $ARG0
         ;;
     e|end )
-        _end ARG0
+        _end $ARG0
         ;;
     nt|newtoken )
-        _newtoken ARG0
+        _newtoken $ARG0
         ;;
     nat|newadmintoken )
-        _newadmintoken ARG0
+        _newadmintoken $ARG0
         ;;
     * )
         _help
