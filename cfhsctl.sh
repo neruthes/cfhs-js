@@ -21,7 +21,6 @@ function _createinstance() {
         return 1
     fi
     mkdir -p $CONFDIR/$ITNAME
-    mkdir -p $CONFDIR/$ITNAME/targets
     echo "Port=1453" > $CONFDIR/$ITNAME/conf
     printf "# Add a list of directories here...\n# Lines starting with # will be ignored.\n/tmp/cfhs-$ITNAME\n" > $CONFDIR/$ITNAME/dirs
     printf '# Append ":abcd" to let it appear as "abcd" in the root index\n' >> $CONFDIR/$ITNAME/dirs
