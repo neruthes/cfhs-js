@@ -19,15 +19,19 @@ let TokensList = [];
 let TokensDict = [];
 let DirsDict = [];
 
+let isRepeating = false;
+
 // --------------------------------------------
 // Lib functions
 // --------------------------------------------
 const parseConf = function (txt) {
-    return {
-        'Port': 1453,
-        'UrlPrefix': 'http://127.0.0.1:1453',
-        'ExternalUrlPrefix': 'http://10.0.233.27:1453'
-    };
+    let arr = txt.trim().split('\n').filter(x => x[0] !== '#');
+    let obj = {};
+    arr.map(function (line) {
+        let arr2 = line.split('=');
+        obj[arr2[0]] = arr2[1];
+    });
+    return obj;
 };
 const updateTokensDB = function (txt) {
     TokensList = [];
@@ -73,24 +77,21 @@ const dumpTokens = function (arr) {
 const parseDirs = function (txt) {
     let localDirsDict = {};
     txt.split('\n').filter(x=>x[0]!=='#').map(function (line) {
-        // console.log(`parseDirs line: ${line}`);
-        if (line.indexOf(':')) {
-            // Has aname declaration
+        if (line.indexOf(':') !== -1) {
+            // Has cname declaration
             let lineArr = line.split(':');
             // console.log(`lineArr: ${lineArr}`);
             localDirsDict[lineArr[1]] = lineArr[0];
         } else {
             // Use the base name
             let baseName = line.split('/').reverse()[0];
-            localDirsDict[baseName] = lineArr[0];
+            localDirsDict[baseName] = line;
         };
     });
     return localDirsDict;
 };
 const readConfAndUpdate = function() {
-    console.log(`EXEC readConfAndUpdate`);
     let InstanceConf_txt = fs.readFileSync(`${HOME}/.config/cfhs-js/${ITNAME}/conf`).toString().trim();
-    console.log(InstanceConf_txt);
     InstanceConf = parseConf(InstanceConf_txt);
 
     // Read TokensDB
@@ -98,9 +99,7 @@ const readConfAndUpdate = function() {
     updateTokensDB(TokensDB_txt);
 
     // Try finding an admin token
-    if (TokensList.filter(x=>x.Type === 'A').length === 0) {
-        newToken('A', '/', 10*365*24*3600*1000);
-    };
+    probeAdminToken();
 
     // Read dirs list
     let DirsList_txt = fs.readFileSync(`${HOME}/.config/cfhs-js/${ITNAME}/dirs`).toString().trim();
@@ -121,13 +120,17 @@ const newToken = function (tokenType, authPath, expiryOffsetMs) {
     });
     dumpTokens();
     return tokenUuid;
-    // dumpTokens();
-    // return tokenUuid;
 };
-// newToken('V', '/', 24*3600*7);
-// console.log(TokensList);
+const probeAdminToken = function () {
+    if (TokensList.filter(x=>x.Type === 'A').length === 0) {
+        let tokenUuid = newToken('A', '/', 10*365*24*3600*1000);
+        isRepeating ? null : console.log(`Added new admin token: http://127.0.0.1:${InstanceConf.Port}/?token=${tokenUuid}`);
+    } else {
+        let tokenUuid = TokensList.filter(x=>x.Type === 'A')[0].Token;
+        isRepeating ? null : console.log(`Found admin token: http://127.0.0.1:${InstanceConf.Port}/?token=${tokenUuid}`);
+    };
+};
 const validateToken = function (candidateToken, desiredType, attemptingPath) {
-    // console.log(TokensDict[candidateToken]);
     if (!TokensDict[candidateToken]) {
         console.log(`validateToken: fail: No such token ${candidateToken}`);
         return false;
@@ -141,32 +144,31 @@ const validateToken = function (candidateToken, desiredType, attemptingPath) {
         return false;
     };
     if (attemptingPath && attemptingPath.indexOf(TokensDict[candidateToken].Path) !== 0) {
-        console.log(`validateToken: fail: Not within authorized scope ${candidateToken}`);
-        return false;
+        if (TokensDict[candidateToken].Type !== 'A') {
+            console.log(`validateToken: fail: Not within authorized scope ${candidateToken}`);
+            console.log(`attemptingPath: ${attemptingPath}`);
+            console.log(`authorizedPath: ${TokensDict[candidateToken].Path}`);
+            return false;
+        }
     };
     console.log(`validateToken: success: ${candidateToken}`);
     return true;
 };
 const getRealFsPath = function (reqPathArr) {
-    // console.log(`666 reqPathArr: ${reqPathArr}`);
-    // if (reqPathArr[0] === '') {
-        // return ''
-    // }
     let arr = reqPathArr.slice(0);
     arr[0] = DirsDict[arr[0]];
-    console.log(`File path for ${reqPathArr} is at ${arr.join('/')}`);
     return arr.join('/');
 };
 const getDirSubdirs = function (source) {
-    // console.log(`9111 source, ${source}`);
-    // console.log(typeof source);
     return fs.readdirSync(source, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
+        .filter(dirent => dirent.name[0] !== '.')
         .map(dirent => dirent.name);
 };
 const getDirFiles = function (source) {
     return fs.readdirSync(source, { withFileTypes: true })
         .filter(dirent => dirent.isFile())
+        .filter(dirent => dirent.name[0] !== '.')
         .map(dirent => dirent.name);
 };
 
@@ -197,17 +199,40 @@ makeResponse.bad = function (res, options) {
     };
 };
 makeResponse.deny = function (res, options) {
-    res.writeHead(403);
-    res.end(`403 Access Denied: ${options.reqPath}`);
+    res.writeHead(403, {
+        'Content-Type': 'text/plain'
+    });
+    res.end(`403 Access Denied: /${options.reqPathArr.join('/')}\n${options.msg || ''}`);
 };
 makeResponse.goodFile = function (res, options) {
     let myFileName = options.reqPathArr.slice().reverse()[0];
     let myFileExtName = myFileName.split('.').reverse()[0].toLowerCase();
-    let txtExtNames = ['txt','md','js','css','html'];
     let fileMimeType = 'application/octet-stream';
-    // console.log(`myFileName: ${myFileName} | myFileExtName: ${myFileExtName}`);
-    if (txtExtNames.indexOf(myFileExtName) !== -1) {
+    let extNamesFor_text = ['txt','md','js','css','html','sh'];
+    if (extNamesFor_text.indexOf(myFileExtName) !== -1) {
         fileMimeType = 'text/plain';
+    };
+    let mimeTypeMatchTable = {
+        'pdf': 'application/pdf',
+
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+
+        'm4v': 'video/mp4',
+        'mp4': 'video/mp4',
+        'mov': 'video/quicktime',
+
+        'mp3': 'audio/mpeg',
+        'm4a': 'audio/mp4',
+        'm4a': 'audio/mp4',
+        'wav': 'audio/vnd.wav',
+        'ogg': 'audio/ogg',
+        'aif': 'audio/x-aiff',
+        'aiff': 'audio/x-aiff',
+    };
+    if (mimeTypeMatchTable.hasOwnProperty(myFileExtName)) {
+        fileMimeType = mimeTypeMatchTable[myFileExtName];
     };
     fs.readFile(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
         if (!err) {
@@ -226,53 +251,64 @@ makeResponse.goodFile = function (res, options) {
     });
 };
 makeResponse.goodDir = function (res, options) {
-    const getParentWebDir = function (reqPathArr) {
-        return '/' + reqPathArr.slice(0).reverse().slice(1).reverse().join('');
-    };
     const genShareButtonSmall = function (filedirpath, token) {
-        if (validateToken(token, 'A', undefined)) {
-            return `<a class="small" target="_blank" href="/.api/shareResource?token=${token}&filedirpath=${encodeURIComponent(filedirpath)}">[Share]</a>`;
+        // if (validateToken(token, 'A', undefined)) {
+            return `<a class="shareButtonSmall" target="_blank" href="/.api/shareResource?token=${token}&filedirpath=${encodeURIComponent(filedirpath)}">[Share]</a>`;
+        // } else {
+            // return '';
+        // };
+    };
+    const genUrlToPath = function (reqPathArr, token) {
+        let dirName = reqPathArr.slice(0).reverse()[0];
+        let _reqPath = '/' + reqPathArr.join('/');
+        if (validateToken(token, 'V', _reqPath)) {
+            return `<a class="" href="/${reqPathArr.join('/')}/?token=${token}">${dirName}</a>`;
         } else {
-            return '';
+            return dirName;
         };
     };
+    const genParentTree = function (reqPathArr, token) {
+        let arr = [];
+        if (validateToken(token, 'V', '/')) {
+            arr.push( `<a href="/?token=${token}">(root)</a>` );
+        } else {
+            arr.push( `(root)` );
+        };
+        for (var i = 1; i <= reqPathArr.length; i++) {
+            arr.push(genUrlToPath(reqPathArr.slice(0, i), token));
+        };
+        return arr.join(' / ');
+    };
     const renderIndexHtml = function (reqPathArr, token) {
-        let listHtml_dirs = '';
-        let listHtml_files = '';
-        let parentDirHint = '<div>&nbsp;</div>';
-        console.log(`777 reqPathArr: ${reqPathArr}`);
+        const isAdminToken = validateToken(token, 'A', undefined);
+        let listHtml_dirs = [];
+        let listHtml_files = [];
+        let parentDirHint = '';
 
         if (reqPathArr[0] === '') {
             // Yes this is root
-            console.log('Yes this is root');
-            listHtml_files = '';
-            listHtml_dirs = Object.keys(DirsDict).map(function (dirName) {
+            listHtml_files = [];
+            listHtml_dirs_1 = [`<li>${isAdminToken ? genShareButtonSmall(`/`, token) : ''} (root)</li>`];
+            listHtml_dirs_2 = Object.keys(DirsDict).map(function (dirName) {
                 return `<li>
-                    ${genShareButtonSmall(`/${dirName}/`, token)}
+                    ${isAdminToken ? genShareButtonSmall(`/${dirName}`, token) : ''}
                     <a class="normal" href="/${dirName}/?token=${token}">${dirName}/</a>
                 </li>`;
             });
+            listHtml_dirs = listHtml_dirs_1.concat(listHtml_dirs_2);
         } else {
             listHtml_dirs = getDirSubdirs(getRealFsPath(reqPathArr)).map(function (dirName) {
                 return `<li>
-                    ${genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}/`, token)}
+                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}`, token) : ''}
                     <a class="normal" href="/${reqPathArr.join('/')}/${dirName}/?token=${token}">${dirName}/</a>
                 </li>`;
-            }).join('');
+            });
             listHtml_files = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
                 return `<li>
-                    ${genShareButtonSmall(`/${reqPathArr.join('/')}/${fileName}`, token)}
+                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${fileName}`, token) : ''}
                     <a class="normal" href="/${reqPathArr.join('/')}/${fileName}?token=${token}">${fileName}</a>
                 </li>`;
-            }).join('');
-            console.log(`6777 length: ${reqPathArr.length}`);
-            if (reqPathArr.length === 1) {
-                // Now inside a tier-1 directory
-                parentDirHint = `<div>Parent: <a class="" href="/?token=${token}">(root)</a></div>`;
-            } else {
-                // Somewhere deeper
-                parentDirHint = `<div>Parent: <a class="" href="${getParentWebDir(reqPathArr)}/?token=${token}">${getParentWebDir(reqPathArr)}</a></div>`;
-            };
+            });
         };
 
         return `<html>
@@ -280,24 +316,24 @@ makeResponse.goodDir = function (res, options) {
                 <meta charset="utf-8" />
                 <title>File Server: /${options.reqPathArr.join('/')}</title>
                 <style>
-                html { padding: 0px; }
+                html { padding: 0px; margin: 0px; }
                 body {
                     font-family: -apple-system, Helvetica, Arial, sans-serif;
                     font-size: 20px;
                     line-height: 2em;
-                    padding: 15px 0 0;
+                    padding: 0px; margin: 0px;
                 }
                 div.cont {
-                    padding: 15px;
+                    padding: 18px;
                 }
+                .parentDirHint {}
                 ul, li {
                     display: block;
                 }
-                ul li a.micro,
-                ul li a.small {
+                ul li a.shareButtonSmall {
                     font-size: 18px;
                     color: #666;
-                    margin: 0 10px 0 0;
+                    margin: 0 15px 0 0;
                 }
                 ul li a.normal {
                     font-size: 24px;
@@ -306,32 +342,29 @@ makeResponse.goodDir = function (res, options) {
                 a {
                     text-decoration: none;
                 }
-
                 </style>
             </head>
             <body>
-                <h1>File Server: /${options.reqPathArr.join('/')}</h1>
-                ${parentDirHint}
-                <!-- h3>Directories</h3 -->
-                <ul>${listHtml_dirs}
-                <!--/ul-->
-                ${ (reqPathArr[0] === '' ? '' : `
-                    <!-- h3>Files</h3 -->
-                    <!--ul-->${listHtml_files}</ul>
-                `) }
+                <div class="cont">
+                    <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
+                    <nav class="parentDirHint">
+                        Location: ${genParentTree(reqPathArr, token)}
+                    </nav>
+                    <ul>
+                        ${(listHtml_files.length + listHtml_dirs.length === 0) ? 'This directory is empty' : (
+                            listHtml_dirs.join('') + listHtml_files.join('')
+                        )}
+                    </ul>
+                </div>
             </body>
         </html>`;
     };
-    console.log(`8005 options.reqPathArr.length: ${options.reqPathArr.join()}`);
-    console.log(options.reqPathArr);
     if (options.reqPathArr[0] === '') {
-        console.log(8006);
         res.writeHead(200, {
             'Content-Type': 'text/html',
         });
         res.end(renderIndexHtml(options.reqPathArr, options.parsedParams.token));
     } else {
-        console.log(8007);
         fs.readdir(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
             if (!err) {
                 res.writeHead(200, {
@@ -344,7 +377,6 @@ makeResponse.goodDir = function (res, options) {
             };
         });
     }
-
 };
 // --------------------------------------------
 // HTTP server
@@ -360,10 +392,14 @@ const parseSearchParams = function (rawParams) {
 const apiEndpoints = {};
 apiEndpoints.shareResource = function (res, options) {
     let tokenRequest = newToken('V', decodeURIComponent(options.parsedParams.filedirpath), 24*3600*1000);
+    let targetUrl = decodeURIComponent(options.parsedParams.filedirpath) + '/';
+    if (targetUrl === '//') {
+        targetUrl = '/';
+    };
     res.writeHead(200, {
         'Content-Type': 'text/html'
     });
-    res.end(`<a href="${decodeURIComponent(options.parsedParams.filedirpath)}?token=${tokenRequest}">The temporary public URL is here</a>`);
+    res.end(`<a href="${targetUrl}?token=${tokenRequest}">The temporary public URL is here</a>`);
 };
 const apiRouter = function (res, options) {
     let apiName = options.reqPath.replace('/.api/', '').replace(/\?.*$/, '');
@@ -377,7 +413,7 @@ const apiRouter = function (res, options) {
 http.createServer(function (req, res) {
     // Parse request
     console.log('\n------------------- New Request -------------------');
-    console.log(`req.url: ${req.url}`);
+    // console.log(`req.url: ${req.url}`);
     let reqPath = req.url;
     let parsedParams = {};
 
@@ -386,30 +422,40 @@ http.createServer(function (req, res) {
         reqPath = req.url.split('?')[0];
         let rawParams = req.url.split('?')[1];
         parsedParams = parseSearchParams(rawParams);
-        // console.log(parsedParams);
     } else {
         return 0;
     };
     let reqPathArr = reqPath.replace(/(^\/|\/$)/g, '').split('/');
-    console.log(`reqPathArr: ${reqPathArr}`);
+
+    // Send to API router?
     if (req.url.indexOf('/.api/') === 0) {
-        console.log(`Going to API router`);
         apiRouter(res, {
             reqPath: reqPath,
             parsedParams: parsedParams
         });
         return 0;
     };
+
     let pathType = 'file';
     if (reqPath[reqPath.length - 1] === '/') {
         pathType = 'dir';
     };
-    console.log(`233 reqPath: ${reqPath}`);
 
     // Normal file resource
     if (parsedParams.token) {
         if (validateToken(parsedParams.token, 'V', reqPath)) {
             // Good token, should try the path
+            // Unless the any in the chain is hidden
+            if (reqPath !== '/' && reqPathArr.filter(x => x[0] === '.').length !== 0) {
+                makeResponse.deny(res, {
+                    parsedParams: parsedParams,
+                    // tokenType: validateToken(parsedParams.token, 'A') ? 'A' : 'V',
+                    pathType: pathType,
+                    reqPathArr: reqPathArr,
+                    msg: 'This is a hidden file.'
+                });
+                return 0;
+            };
             if (pathType === 'file') {
                 makeResponse.goodFile(res, {
                     parsedParams: parsedParams,
@@ -418,7 +464,6 @@ http.createServer(function (req, res) {
                     reqPathArr: reqPathArr
                 });
             } else {
-                console.log(8003, reqPathArr);
                 makeResponse.goodDir(res, {
                     parsedParams: parsedParams,
                     // tokenType: validateToken(parsedParams.token, 'A') ? 'A' : 'V',
@@ -432,6 +477,7 @@ http.createServer(function (req, res) {
             makeResponse.deny(res, {
                 parsedParams: parsedParams,
                 pathType: pathType,
+                reqPathArr: reqPathArr,
                 reqPath: reqPath
             });
         };
@@ -443,4 +489,6 @@ http.createServer(function (req, res) {
             reqPath: reqPath
         });
     };
-}).listen(1453);
+}).listen(InstanceConf.Port);
+
+isRepeating = true;
