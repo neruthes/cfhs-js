@@ -295,12 +295,16 @@ makeResponse.goodDir = function (res, options) {
         if (reqPathArr[0] === '') {
             // Yes this is root
             listHtml_files = [];
-            listHtml_dirs_1 = [`<li>${isAdminToken ? genShareButtonSmall(`/`, token) : ''} (root)</li>`];
+            listHtml_dirs_1 = [`<tr><td>${isAdminToken ? genShareButtonSmall(`/`, token) : ''} (root)</td><td></td></tr>`];
             listHtml_dirs_2 = Object.keys(DirsDict).map(function (dirName) {
-                return `<li>
-                    ${isAdminToken ? genShareButtonSmall(`/${dirName}`, token) : ''}
-                    <a class="normal" href="/${dirName}/?token=${token}">${dirName}/</a>
-                </li>`;
+                return `<tr>
+                    <td>
+                        ${isAdminToken ? genShareButtonSmall(`/${dirName}`, token) : ''}
+                        <a class="normal" href="/${dirName}/?token=${token}">${dirName}/</a>
+                    </td>
+                    <td>
+                    </td>
+                </tr>`;
             });
             listHtml_dirs = listHtml_dirs_1.concat(listHtml_dirs_2);
         } else {
