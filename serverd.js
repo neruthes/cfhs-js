@@ -69,9 +69,6 @@ const serializeTokens = function (arr) {
     }).join('\n');
 };
 const dumpTokens = function (arr) {
-    // return 0;
-    // console.log(serializeTokens(TokensList));
-    // Dump TokensDB
     fs.writeFileSync(`${HOME}/.config/cfhs-js/${ITNAME}/tokens`, serializeTokens(TokensList));
 };
 const parseDirs = function (txt) {
@@ -122,12 +119,17 @@ const newToken = function (tokenType, authPath, expiryOffsetMs) {
     return tokenUuid;
 };
 const probeAdminToken = function () {
+    const getFullRootUrl = function (tokenUuid) {
+        let prefix = InstanceConf.UrlPrefix || `http://127.0.0.1:${InstanceConf.Port}`;
+        let tmpStr = `${prefix}:${InstanceConf.Port}/?token=${tokenUuid}`.replace(/:(80|443)/, '');
+        return tmpStr;
+    };
     if (TokensList.filter(x=>x.Type === 'A').length === 0) {
         let tokenUuid = newToken('A', '/', 10*365*24*3600*1000);
-        isRepeating ? null : console.log(`Added new admin token: http://127.0.0.1:${InstanceConf.Port}/?token=${tokenUuid}`);
+        isRepeating ? null : console.log(`Added new admin token: ${getFullRootUrl(tokenUuid)}`);
     } else {
-        let tokenUuid = TokensList.filter(x=>x.Type === 'A')[0].Token;
-        isRepeating ? null : console.log(`Found admin token: http://127.0.0.1:${InstanceConf.Port}/?token=${tokenUuid}`);
+        let tokenUuid = TokensList.filter(x => x.Type === 'A')[0].Token;
+        isRepeating ? null : console.log(`Found admin token: ${getFullRootUrl(tokenUuid)}`);
     };
 };
 const validateToken = function (candidateToken, desiredType, attemptingPath) {
@@ -170,6 +172,11 @@ const getDirFiles = function (source) {
         .filter(dirent => dirent.isFile())
         .filter(dirent => dirent.name[0] !== '.')
         .map(dirent => dirent.name);
+};
+const getDirFilesObjList = function (source) {
+    return fs.readdirSync(source, { withFileTypes: true })
+        .filter(dirent => dirent.isFile())
+        .filter(dirent => dirent.name[0] !== '.')
 };
 
 // --------------------------------------------
@@ -297,24 +304,47 @@ makeResponse.goodDir = function (res, options) {
             });
             listHtml_dirs = listHtml_dirs_1.concat(listHtml_dirs_2);
         } else {
+            // This is not root
             listHtml_dirs = getDirSubdirs(getRealFsPath(reqPathArr)).map(function (dirName) {
-                return `<li>
-                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}`, token) : ''}
-                    <a class="normal" href="/${reqPathArr.join('/')}/${dirName}/?token=${token}">${dirName}/</a>
-                </li>`;
+                return `<tr>
+                    <td class="">
+                        ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}`, token) : ''}
+                        <a class="normal" href="/${reqPathArr.join('/')}/${dirName}/?token=${token}">${dirName}/</a>
+                    </td>
+                    <td class="">
+                    </td>
+                </tr>`;
             });
             listHtml_files = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
-                return `<li>
-                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${fileName}`, token) : ''}
-                    <a class="normal" href="/${reqPathArr.join('/')}/${fileName}?token=${token}">${fileName}</a>
-                </li>`;
+                const getFileSizeStr = function (rawFileSize) {
+                    let level = 0;
+                    let tmpNum = rawFileSize;
+                    while (tmpNum > 1024 && level < 3) {
+                        tmpNum = tmpNum/1024;
+                        level += 1;
+                    };
+                    let betterNum = Math.ceil(tmpNum * 100) / 100;
+                    return `${betterNum} ${['B','KB','MB','GB'][level]}`;
+                };
+                let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
+                return `<tr>
+
+                    <td class="">
+                        ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${fileName}`, token) : ''}
+                        <a class="normal" href="/${reqPathArr.join('/')}/${fileName}?token=${token}">${fileName}</a>
+                    </td>
+                    <td class="">
+                        <small>(${getFileSizeStr(rawFileSize)})</small>
+                    </td>
+                </tr>`;
             });
         };
 
         return `<html>
             <head>
                 <meta charset="utf-8" />
-                <title>File Server: /${options.reqPathArr.join('/')}</title>
+                <title>${InstanceConf.ServerName}: /${options.reqPathArr.join('/')}</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
                 html { padding: 0px; margin: 0px; }
                 body {
@@ -326,16 +356,46 @@ makeResponse.goodDir = function (res, options) {
                 div.cont {
                     padding: 18px;
                 }
+                header {
+                    padding: 2px;
+                }
                 .parentDirHint {}
                 ul, li {
                     display: block;
                 }
-                ul li a.shareButtonSmall {
+                a.shareButtonSmall {
                     font-size: 18px;
                     color: #666;
                     margin: 0 15px 0 0;
                 }
-                ul li a.normal {
+                table.main-table,
+                table.main-table tbody {
+                    width: 100%;
+                    border: none;
+                }
+                table.main-table tr {
+                    height: 50px;
+                }
+                table.main-table tr td,
+                table.main-table tr th {
+                    text-align: left;
+                    // padding-left: 10px;
+                    border-bottom: 1px solid #DDD;
+                }
+                table.main-table tr:nth-child(odd) {
+                    // background: #F5F5F5;
+                }
+                table.main-table tr td:nth-child(1),
+                table.main-table tr th:nth-child(1) {
+                    min-width: calc(58% - 40px);
+                    padding-right: 10px;
+                }
+                table.main-table tr td:nth-child(2),
+                table.main-table tr th:nth-child(2) {
+                    text-align: right
+                    max-width: 100px;
+                }
+                a.normal {
                     font-size: 24px;
                     color: #00E;
                 }
@@ -346,15 +406,23 @@ makeResponse.goodDir = function (res, options) {
             </head>
             <body>
                 <div class="cont">
-                    <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
-                    <nav class="parentDirHint">
-                        Location: ${genParentTree(reqPathArr, token)}
-                    </nav>
-                    <ul>
-                        ${(listHtml_files.length + listHtml_dirs.length === 0) ? 'This directory is empty' : (
-                            listHtml_dirs.join('') + listHtml_files.join('')
-                        )}
-                    </ul>
+                    <header>
+                        <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
+                        <nav class="parentDirHint">
+                            Location: ${genParentTree(reqPathArr, token)}
+                        </nav>
+                    </header>
+                    <table class="main-table">
+                        <tbody>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Size</th>
+                            </tr>
+                            ${(listHtml_files.length + listHtml_dirs.length === 0) ? 'This directory is empty' : (
+                                listHtml_dirs.join('') + listHtml_files.join('')
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </body>
         </html>`;
