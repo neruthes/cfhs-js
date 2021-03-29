@@ -1,0 +1,22 @@
+{
+  "name": "cfhs-js",
+  "version": "0.1.0",
+  "description": "Complex HTTP File Server",
+  "main": "serverd.js",
+  "scripts": {
+    "test": "echo NO_TESTS"
+  },
+  "bin": {
+    "cfhs-js-serverd": "serverd.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neruthes/cfhs-js.git"
+  },
+  "author": "Neruthes",
+  "license": "GPL-2.0",
+  "bugs": {
+    "url": "https://github.com/neruthes/cfhs-js/issues"
+  },
+  "homepage": "https://github.com/neruthes/cfhs-js#readme"
+}
