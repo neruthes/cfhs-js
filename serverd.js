@@ -1,15 +1,28 @@
 #!/bin/node
 
+// --------------------------------------------
+// Dependencies
+// --------------------------------------------
 const os = require('os');
 const fs = require('fs');
 const http = require('http');
 const sh = require('child_process').execSync;
 
+
+
 // --------------------------------------------
 // Arguments
 // --------------------------------------------
-const ITNAME = process.argv[2];
+const VERB = process.argv[2];
+const ITNAME = process.argv[3];
+
+// --------------------------------------------
+// Early bootloading
+// --------------------------------------------
 console.log(`Starting instance: ~/.config/cfhs-js/${ITNAME}`);
+console.log(`My PID is ${process.pid} (${process.env.USER})`);
+console.log(typeof process.pid);
+fs.writeFileSync(`/tmp/run/cfhs-js.pid/${process.env.USER}/${ITNAME}`, process.pid.toString());
 
 // --------------------------------------------
 // Global variables

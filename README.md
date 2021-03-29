@@ -78,6 +78,31 @@ Index   | Field Name        | Details
 3       | Path              | The path which this token is authorized to access.
 4       | Expiry            | The expiry date, ISO 8601 format, initial 19 characters.
 
+## Manage Instances
+
+### Create
+
+```
+cfhs-js-ctl new MyInstanceName
+```
+
+This will create the instance configuration directory.
+
+### Start & End Instances
+
+```
+cfhs-js-ctl start MyInstanceName
+cfhs-js-ctl end MyInstanceName
+```
+
+You may start and stop instances with the 2 subcommands.
+
+### Check Instance Status
+
+```
+cfhs-js-ctl status-all
+```
+
 ## How Things Work
 
 ### Process Life Cycle

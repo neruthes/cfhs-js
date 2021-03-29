@@ -1,12 +1,13 @@
 {
   "name": "cfhs-js",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Complex HTTP File Server",
   "main": "serverd.js",
   "scripts": {
     "test": "echo NO_TESTS"
   },
   "bin": {
+    "cfhs-js-ctl": "cfhsctl.sh",
     "cfhs-js-serverd": "serverd.js"
   },
   "repository": {
