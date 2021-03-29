@@ -121,7 +121,7 @@ const newToken = function (tokenType, authPath, expiryOffsetMs) {
 const probeAdminToken = function () {
     const getFullRootUrl = function (tokenUuid) {
         let prefix = InstanceConf.UrlPrefix || `http://127.0.0.1:${InstanceConf.Port}`;
-        let tmpStr = `${prefix}:${InstanceConf.Port}/?token=${tokenUuid}`.replace(/:(80|443)/, '');
+        let tmpStr = `${prefix}/?token=${tokenUuid}`.replace(/:(80|443)/, '');
         return tmpStr;
     };
     if (TokensList.filter(x=>x.Type === 'A').length === 0) {
@@ -177,6 +177,23 @@ const getDirFilesObjList = function (source) {
     return fs.readdirSync(source, { withFileTypes: true })
         .filter(dirent => dirent.isFile())
         .filter(dirent => dirent.name[0] !== '.')
+};
+const padLeft = function (str, len, pad) {
+    if (str.length >= len) {
+        return str;
+    };
+    return (new Array(len-str.length).fill(pad || ' ')).join('') + str;
+};
+const getFileSizeStr = function (rawFileSize) {
+    let level = 0;
+    let tmpNum = rawFileSize;
+    while (tmpNum > 1024 && level < 3) {
+        tmpNum = tmpNum/1024;
+        level += 1;
+    };
+    let betterNum = Math.ceil(tmpNum * 100) / 100;
+
+    return `${padLeft(betterNum.toString(), 7, '&nbsp;')} ${['B','KB','MB','GB'][level]}`;
 };
 
 // --------------------------------------------
@@ -244,8 +261,16 @@ makeResponse.goodFile = function (res, options) {
     fs.readFile(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
         if (!err) {
             let myResHeaders = {
-                'Content-Type': fileMimeType,
+                'Content-Type': fileMimeType
             };
+            let rawFileSize = -33;
+            try {
+                rawFileSize = fs.statSync(getRealFsPath(options.reqPathArr) + '/' + myFileName).size;
+            } catch (e) {
+            };
+            if (rawFileSize !== -33) {
+                myResHeaders['Length'] = rawFileSize;
+            }
             if (fileMimeType !== 'text/plain') {
                 myResHeaders['Content-Disposition'] = `attachment; filename="${encodeURIComponent(myFileName)}"`;
             };
@@ -259,11 +284,7 @@ makeResponse.goodFile = function (res, options) {
 };
 makeResponse.goodDir = function (res, options) {
     const genShareButtonSmall = function (filedirpath, token) {
-        // if (validateToken(token, 'A', undefined)) {
-            return `<a class="shareButtonSmall" target="_blank" href="/.api/shareResource?token=${token}&filedirpath=${encodeURIComponent(filedirpath)}">[Share]</a>`;
-        // } else {
-            // return '';
-        // };
+        return `<a class="shareButtonSmall" target="_blank" href="/.api/shareResource?token=${token}&filedirpath=${encodeURIComponent(filedirpath)}">[Share]</a>`;
     };
     const genUrlToPath = function (reqPathArr, token) {
         let dirName = reqPathArr.slice(0).reverse()[0];
@@ -320,25 +341,14 @@ makeResponse.goodDir = function (res, options) {
                 </tr>`;
             });
             listHtml_files = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
-                const getFileSizeStr = function (rawFileSize) {
-                    let level = 0;
-                    let tmpNum = rawFileSize;
-                    while (tmpNum > 1024 && level < 3) {
-                        tmpNum = tmpNum/1024;
-                        level += 1;
-                    };
-                    let betterNum = Math.ceil(tmpNum * 100) / 100;
-                    return `${betterNum} ${['B','KB','MB','GB'][level]}`;
-                };
                 let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
                 return `<tr>
-
                     <td class="">
                         ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${fileName}`, token) : ''}
                         <a class="normal" href="/${reqPathArr.join('/')}/${fileName}?token=${token}">${fileName}</a>
                     </td>
                     <td class="">
-                        <small>(${getFileSizeStr(rawFileSize)})</small>
+                        <small style="font-family: monospace;">${getFileSizeStr(rawFileSize)}</small>
                     </td>
                 </tr>`;
             });
@@ -514,6 +524,7 @@ http.createServer(function (req, res) {
     };
 
     // Normal file resource
+    reqPathArr = reqPathArr.map(x => decodeURIComponent(x));
     if (parsedParams.token) {
         if (validateToken(parsedParams.token, 'V', reqPath)) {
             // Good token, should try the path
