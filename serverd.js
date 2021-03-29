@@ -18,8 +18,8 @@ const HOME = os.homedir();
 let GlobalConf = {};
 let InstanceConf = {};
 let TokensList = [];
-let TokensDict = [];
-let DirsDict = [];
+let TokensDict = {};
+let DirsDict = {};
 
 let isRepeating = false;
 
@@ -36,8 +36,8 @@ const parseConf = function (txt) {
     return obj;
 };
 const updateTokensDB = function (txt) {
-    TokensList = [];
-    TokensDict = {};
+    let _TokensList = [];
+    let _TokensDict = {};
     txt.split('\n').map(function (line) {
         if (line[0] === '#') {
             return 0;
@@ -55,9 +55,11 @@ const updateTokensDB = function (txt) {
             console.log(`[INFO] Token '${tokenItem.Token}' has expired for 24 hours. Will not keep it.`);
             return 0;
         };
-        TokensList.push(tokenItem);
-        TokensDict[tokenItem.Token] = tokenItem;
+        _TokensList.push(tokenItem);
+        _TokensDict[tokenItem.Token] = tokenItem;
     });
+    TokensList = _TokensList;
+    TokensDict = _TokensDict;
 };
 const serializeTokens = function (arr) {
     return arr.map(function (tokenItem, i) {
