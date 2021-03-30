@@ -145,7 +145,7 @@ function _end() {
         printf "Your answer (y/n) > "
         UANSWER=n
         read UANSWER
-        if [[ "${UANSWER:0:1}" == "y" ]]; then
+        if [[ "${UANSWER:0:1}" == "y"* ]]; then
             kill -9 "$PID"
             rm "$PIDFILEPATH"
             echo "Killed instance '$ITNAME' at PID $PID"
@@ -178,13 +178,28 @@ case $SUBCOMMAND in
         _ls
         ;;
     n|new )
-        _new $ARG0
+        _new "$ARG0"
+        ;;
+    conf )
+        nano "$CONFDIR/$ARG0/conf"
+        ;;
+    dirs )
+        nano "$CONFDIR/$ARG0/dirs"
+        ;;
+    tokens )
+        less "$CONFDIR/$ARG0/tokens"
         ;;
     s|start )
-        _start $ARG0
+        _start "$ARG0"
         ;;
     e|end )
-        _end $ARG0
+        _end "$ARG0"
+        ;;
+    log )
+        cat "${RUNDIRPREF}.log/${USER}/${ARG0}"
+        ;;
+    tail )
+        tail -f "${RUNDIRPREF}.log/${USER}/${ARG0}"
         ;;
     sa|status-all )
         _statusAll
