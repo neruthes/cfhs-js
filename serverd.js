@@ -39,6 +39,17 @@ let TokensList = [];
 let TokensDict = {};
 let DirsDict = {};
 const ImgCacheTimeMap = {};
+if (fs.existsSync(`${imgCacheDir}/catalog.json`)) {
+    try {
+        let jsonObj = JSON.parse(fs.readFileSync(`${imgCacheDir}/catalog.json`).toString());
+        Object.keys(jsonObj).map(function (jobId) {
+            ImgCacheTimeMap[jobId] = jsonObj[jobId];
+        });
+        console.log(`Found ImgCacheTimeMap cache catalog.`);
+        console.log(ImgCacheTimeMap);
+    } catch (e) {
+    }
+};
 const ImgCacheJobQueueObj = {};
 let ImgThumbnailCreationActiveObjId = undefined;
 
@@ -179,7 +190,7 @@ const validateToken = function (candidateToken, desiredType, attemptingPath) {
             return false;
         }
     };
-    console.log(`validateToken: success: ${candidateToken}`);
+    // console.log(`validateToken: success: ${candidateToken}`);
     return true;
 };
 const getRealFsPath = function (reqPathArr) {
@@ -235,9 +246,10 @@ const makeImgThumbnailCache = function (jobPtr) {
     let reqPathArr = jobPtr.reqPathArr;
     let imgFsPath = getRealFsPath(reqPathArr);
     let imgCachePath = getImgThumbnailFilePath(reqPathArr);
-    ImgCacheTimeMap[imgCachePath] = Date.now();
     child_process.exec(`convert '${imgFsPath}' -resize 300 '${imgCachePath}'`, function (err, stdout, stderr) {
+        ImgCacheTimeMap[jobPtr.jobId] = Date.now();
         delete ImgCacheJobQueueObj[ImgThumbnailCreationActiveObjId];
+        dumpImgCacheTimeMap();
         ImgThumbnailCreationActiveObjId = undefined;
         isImageThumbnailCreationBusy = false;
     });
@@ -249,14 +261,15 @@ const makeImgThumbnailCreationRequest = function (reqPathArr) {
         console.log(ImgCacheJobQueueObj[jobId]);
         return 'err_already_in_queue';
     };
-    console.log(`------114------`);
-    console.log(reqPathArr);
     let obj = {
         'state': 'waiting',
         'jobId': jobId,
         'reqPathArr': reqPathArr
     };
     ImgCacheJobQueueObj[jobId] = obj;
+};
+const dumpImgCacheTimeMap = function () {
+    fs.writeFileSync(`${imgCacheDir}/catalog.json`, JSON.stringify(ImgCacheTimeMap, '\t', 2));
 };
 
 // --------------------------------------------
@@ -277,15 +290,19 @@ setInterval(function () {
 // Image thumbnail request queue
 setInterval(function () {
     if (!isImageThumbnailCreationBusy) {
+        // console.log(`Current thumbnail creation job queue:`);
+        // console.log(ImgCacheJobQueueObj);
         let imgCacheJobQueueArr = Object.keys(ImgCacheJobQueueObj).map(kn=>ImgCacheJobQueueObj[kn]).filter(job => job.state === 'waiting');
         if (imgCacheJobQueueArr.length > 0) {
             // Start processing the job
-            console.log(`// Start processing the job`);
+            console.log(`Start processing a thumbnail creation job`);
             isImageThumbnailCreationBusy = true;
             let jobPtr = imgCacheJobQueueArr[0];
             jobPtr.state = 'working';
             makeImgThumbnailCache(jobPtr);
         };
+    } else {
+        console.log(`isImageThumbnailCreationBusy: ${isImageThumbnailCreationBusy}`);
     };
 }, 500);
 
@@ -343,25 +360,28 @@ makeResponse.goodFile = function (res, options) {
     // Serve thumbnail
     if (options.parsedParams.thumbnail === 'true') {
         let imgTbPath = getImgThumbnailFilePath(options.reqPathArr);
-        console.log(`Requesting a thumbnail: ${imgTbPath}`);
+        // console.log(`Requesting a thumbnail: ${imgTbPath}`);
         let shouldRemakeThumbnail = false;
         let imgRawPath = getRealFsPath(options.reqPathArr);
         if (fs.existsSync(imgTbPath)) {
+            // console.log(`Found thumbnail cache at ${imgTbPath}`);
             // Newer than raw image?
             let statRaw = fs.statSync(getRealFsPath(options.reqPathArr));
-            if (ImgCacheTimeMap[imgTbPath] && typeof ImgCacheTimeMap[imgTbPath] === 'number' && statRaw.mtimeMs > ImgCacheTimeMap[imgTbPath]) {
+            let jobId = sha256sum(getRealFsPath(options.reqPathArr));
+            if (ImgCacheTimeMap[jobId] && typeof ImgCacheTimeMap[jobId] === 'number' && statRaw.mtimeMs < ImgCacheTimeMap[jobId]) {
+                shouldRemakeThumbnail = false;
+            } else {
                 shouldRemakeThumbnail = true;
             };
         } else {
             shouldRemakeThumbnail = true;
         };
-        console.log(`shouldRemakeThumbnail: ${shouldRemakeThumbnail}`);
-        let imgFileEntity = fs.readFile(shouldRemakeThumbnail ? imgRawPath : imgTbPath, function (err, stdout, stderr) {
-            res.writeHead(200, {
-                'Content-Type': fileMimeType
-            });
-            res.end(stdout);
+        // console.log(`shouldRemakeThumbnail: ${shouldRemakeThumbnail}`);
+        let imgFileEntity = fs.readFileSync(shouldRemakeThumbnail ? imgRawPath : imgTbPath);
+        res.writeHead(200, {
+            'Content-Type': fileMimeType
         });
+        res.end(imgFileEntity);
         if (shouldRemakeThumbnail) {
             makeImgThumbnailCreationRequest(options.reqPathArr);
         };
@@ -404,7 +424,7 @@ makeResponse.goodDir = function (res, options) {
         let dirName = reqPathArr.slice(0).reverse()[0];
         let _reqPath = '/' + reqPathArr.join('/');
         if (validateToken(token, 'V', _reqPath)) {
-            return `<a class="" href="/${reqPathArr.join('/')}/?token=${token}">${dirName}</a>`;
+            return `<a class="normal" href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/?token=${token}">${dirName}</a>`;
         } else {
             return dirName;
         };
@@ -412,7 +432,7 @@ makeResponse.goodDir = function (res, options) {
     const genParentTree = function (reqPathArr, token) {
         let arr = [];
         if (validateToken(token, 'V', '/')) {
-            arr.push( `<a href="/?token=${token}">(root)</a>` );
+            arr.push( `<a class="normal" href="/?token=${token}">(root)</a>` );
         } else {
             arr.push( `(root)` );
         };
@@ -424,12 +444,9 @@ makeResponse.goodDir = function (res, options) {
 
     // Decide indexPageType
     let indexPageType = 'list';
-    console.log('getRealFsPath(options.reqPathArr)');
-    console.log(getRealFsPath(options.reqPathArr));
     let dirMetadataFilePath_indexType = getRealFsPath(options.reqPathArr) + '/.cfhs-index-type';
     if (fs.existsSync(dirMetadataFilePath_indexType)) {
         indexPageType = fs.readFileSync(dirMetadataFilePath_indexType).toString().trim();
-        console.log(`Using indexPageType: ` + indexPageType);
     };
 
     // Start rendering
@@ -446,6 +463,15 @@ makeResponse.goodDir = function (res, options) {
     }
     header {
         padding: 2px;
+        margin: 0 0 15px;
+    }
+    header h1.server-name {
+        font-size: 40px;
+        font-weight: 800;
+    }
+    header h2.server-heading {
+        font-size: 26px;
+        font-weight: 500;
     }
     .parentDirHint {}
     a.normal {
@@ -525,15 +551,22 @@ makeResponse.goodDir = function (res, options) {
         ${indexPageStyle_common}
         ${indexPageStyle[indexPageType]}
         </style>
-    </head>`
+    </head>`;
+    let htmlPageHeader = `<header>
+        <h1 class="server-name">${ InstanceConf.ServerName || 'File Server' }</h1>
+        <h2 class="server-heading">${ InstanceConf.ServerHeading || '' }</h2>
+        <nav class="parentDirHint">
+            Location: ${genParentTree(options.reqPathArr, options.parsedParams.token)}
+        </nav>
+    </header>`;
     let renderIndexHtml = {};
     renderIndexHtml.album = function (reqPathArr, token) {
         const isAdminToken = validateToken(token, 'A', undefined);
         let listHtml_dirs = getDirSubdirs(getRealFsPath(reqPathArr)).map(function (dirName) {
             return `<tr>
                 <td class="">
-                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}`, token) : ''}
-                    <a class="normal" href="/${reqPathArr.join('/')}/${dirName}/?token=${token}">${dirName}/</a>
+                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(dirName)}`, token) : ''}
+                    <a class="normal" href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(dirName)}/?token=${token}">${dirName}/</a>
                 </td>
             </tr>`;
         });
@@ -541,8 +574,8 @@ makeResponse.goodDir = function (res, options) {
         let albumCells = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
             let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
             return `<div class="album-cell">
-                <a href="/${reqPathArr.join('/')}/${fileName}?token=${token}">
-                    <img src="/${reqPathArr.join('/')}/${fileName}?token=${token}&thumbnail=true">
+                <a href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}?token=${token}">
+                    <img src="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}?token=${token}&thumbnail=true">
                 </a>
             </div>`;
         }).join('');
@@ -551,12 +584,7 @@ makeResponse.goodDir = function (res, options) {
             ${htmlHead}
             <body data-index-type="${indexPageType}">
                 <div class="cont">
-                    <header>
-                        <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
-                        <nav class="parentDirHint">
-                            Location: ${genParentTree(reqPathArr, token)}
-                        </nav>
-                    </header>
+                    ${htmlPageHeader}
                     ${(listHtml_dirs.length === 0 ? '' : (function () {
                         return `<table class="main-table">
                             <tbody>
@@ -593,7 +621,7 @@ makeResponse.goodDir = function (res, options) {
             listHtml_dirs_2 = Object.keys(DirsDict).map(function (dirName) {
                 return `<tr>
                     <td>
-                        ${isAdminToken ? genShareButtonSmall(`/${dirName}`, token) : ''}
+                        ${isAdminToken ? genShareButtonSmall(`/${encodeURIComponent(dirName)}`, token) : ''}
                         <a class="normal" href="/${dirName}/?token=${token}">${dirName}/</a>
                     </td>
                     <td>
@@ -606,8 +634,8 @@ makeResponse.goodDir = function (res, options) {
             listHtml_dirs = getDirSubdirs(getRealFsPath(reqPathArr)).map(function (dirName) {
                 return `<tr>
                     <td class="">
-                        ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}`, token) : ''}
-                        <a class="normal" href="/${reqPathArr.join('/')}/${dirName}/?token=${token}">${dirName}/</a>
+                        ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${dirName}`, token) : ''}
+                        <a class="normal" href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(dirName)}/?token=${token}">${dirName}/</a>
                     </td>
                     <td class="">
                     </td>
@@ -617,8 +645,8 @@ makeResponse.goodDir = function (res, options) {
                 let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
                 return `<tr>
                     <td class="">
-                        ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${fileName}`, token) : ''}
-                        <a class="normal" href="/${reqPathArr.join('/')}/${fileName}?token=${token}">${fileName}</a>
+                        ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${fileName}`, token) : ''}
+                        <a class="normal" href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}?token=${token}">${fileName}</a>
                     </td>
                     <td class="">
                         <small style="font-family: monospace;">${getFileSizeStr(rawFileSize)}</small>
@@ -631,12 +659,7 @@ makeResponse.goodDir = function (res, options) {
             ${htmlHead}
             <body data-index-type="${indexPageType}">
                 <div class="cont">
-                    <header>
-                        <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
-                        <nav class="parentDirHint">
-                            Location: ${genParentTree(reqPathArr, token)}
-                        </nav>
-                    </header>
+                    ${htmlPageHeader}
                     <table class="main-table">
                         <tbody>
                             <tr>
@@ -705,8 +728,7 @@ const apiRouter = function (res, options) {
 };
 http.createServer(function (req, res) {
     // Parse request
-    console.log('\n------------------- New Request -------------------');
-    console.log(`req.url: ${req.url}`);
+    console.log(`****New Request: ${req.url}`);
     let reqPath = req.url;
     let parsedParams = {};
 
