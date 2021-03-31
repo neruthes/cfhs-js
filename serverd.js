@@ -461,15 +461,15 @@ makeResponse.goodDir = function (res, options) {
         height: auto;
         // max-width: 200px;
     }
+    header {
+        padding: 2px;
+    }
+    .parentDirHint {}
     `;
     let indexPageStyle = {};
     indexPageStyle.album = `
     `;
     indexPageStyle.list = `
-    header {
-        padding: 2px;
-    }
-    .parentDirHint {}
     ul, li {
         display: block;
     }
