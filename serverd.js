@@ -283,7 +283,7 @@ readConfAndUpdate();
 
 // Configuration
 setInterval(function () {
-    console.log('[INFO] Configuration watchdog invocation');
+    // console.log('[INFO] Configuration watchdog invocation');
     readConfAndUpdate();
 }, 1000*10);
 
