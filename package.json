@@ -1,6 +1,6 @@
 {
   "name": "cfhs-js",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Complex HTTP File Server",
   "main": "serverd.js",
   "scripts": {

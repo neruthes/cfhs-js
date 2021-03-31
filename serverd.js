@@ -8,8 +8,6 @@ const fs = require('fs');
 const http = require('http');
 const sh = require('child_process').execSync;
 
-
-
 // --------------------------------------------
 // Arguments
 // --------------------------------------------
@@ -21,7 +19,6 @@ const ITNAME = process.argv[3];
 // --------------------------------------------
 console.log(`Starting instance: ~/.config/cfhs-js/${ITNAME}`);
 console.log(`My PID is ${process.pid} (${process.env.USER})`);
-console.log(typeof process.pid);
 fs.writeFileSync(`/tmp/run/cfhs-js.pid/${process.env.USER}/${ITNAME}`, process.pid.toString());
 
 // --------------------------------------------
@@ -224,7 +221,7 @@ readConfAndUpdate();
 setInterval(function () {
     console.log('[INFO] Configuration watchdog invocation');
     readConfAndUpdate();
-}, 3000);
+}, 8000);
 console.log(DirsDict);
 
 // --------------------------------------------
@@ -246,12 +243,14 @@ makeResponse.deny = function (res, options) {
     res.end(`403 Access Denied: /${options.reqPathArr.join('/')}\n${options.msg || ''}`);
 };
 makeResponse.goodFile = function (res, options) {
+    let isAttachment = true;
     let myFileName = options.reqPathArr.slice().reverse()[0];
     let myFileExtName = myFileName.split('.').reverse()[0].toLowerCase();
     let fileMimeType = 'application/octet-stream';
     let extNamesFor_text = ['txt','md','js','css','html','sh'];
     if (extNamesFor_text.indexOf(myFileExtName) !== -1) {
         fileMimeType = 'text/plain';
+        isAttachment = false;
     };
     let mimeTypeMatchTable = {
         'pdf': 'application/pdf',
@@ -274,6 +273,8 @@ makeResponse.goodFile = function (res, options) {
     };
     if (mimeTypeMatchTable.hasOwnProperty(myFileExtName)) {
         fileMimeType = mimeTypeMatchTable[myFileExtName];
+        console.log(`fileMimeType is now ${fileMimeType}`);
+        isAttachment = false;
     };
     fs.readFile(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
         if (!err) {
@@ -288,7 +289,7 @@ makeResponse.goodFile = function (res, options) {
             if (rawFileSize !== -33) {
                 myResHeaders['Length'] = rawFileSize;
             }
-            if (fileMimeType !== 'text/plain') {
+            if (isAttachment) {
                 myResHeaders['Content-Disposition'] = `attachment; filename="${encodeURIComponent(myFileName)}"`;
             };
             res.writeHead(200, myResHeaders);
@@ -512,9 +513,20 @@ const apiRouter = function (res, options) {
 http.createServer(function (req, res) {
     // Parse request
     console.log('\n------------------- New Request -------------------');
-    // console.log(`req.url: ${req.url}`);
+    console.log(`req.url: ${req.url}`);
     let reqPath = req.url;
     let parsedParams = {};
+
+    if (req.url.length < 2) {
+        makeResponse.deny(res, {
+            parsedParams: parsedParams,
+            pathType: pathType,
+            reqPathArr: reqPathArr,
+            reqPath: reqPath,
+            msg: 'URL is too short'
+        });
+        return 0;
+    };
 
     if (req.url.indexOf('?') !== -1) {
         // Search params found
