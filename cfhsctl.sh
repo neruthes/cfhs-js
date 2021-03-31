@@ -196,6 +196,10 @@ case $SUBCOMMAND in
     e|end )
         _end "$ARG0"
         ;;
+    r|restart )
+        _end "$ARG0"
+        _start "$ARG0"
+        ;;
     log )
         cat "${RUNDIRPREF}.log/${USER}/${ARG0}"
         ;;
