@@ -117,6 +117,7 @@ function _start() {
     LOGPATH="${RUNDIRPREF}.log/${USER}/${ITNAME}"
     mkdir -p "${RUNDIRPREF}.pid/${USER}"
     mkdir -p "${RUNDIRPREF}.log/${USER}"
+    mkdir -p "${RUNDIRPREF}.imgcache/${USER}/ITNAME"
 
     if [[ -e "$PIDFILEPATH" ]]; then
         echo "ERROR:"

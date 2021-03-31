@@ -6,6 +6,7 @@
 const os = require('os');
 const fs = require('fs');
 const http = require('http');
+const child_process = require('child_process');
 const sh = require('child_process').execSync;
 
 // --------------------------------------------
@@ -20,6 +21,8 @@ const ITNAME = process.argv[3];
 console.log(`Starting instance: ~/.config/cfhs-js/${ITNAME}`);
 console.log(`My PID is ${process.pid} (${process.env.USER})`);
 fs.writeFileSync(`/tmp/run/cfhs-js.pid/${process.env.USER}/${ITNAME}`, process.pid.toString());
+let imgCacheDir = `/tmp/run/cfhs-js.imgcache/${process.env.USER}/${ITNAME}`;
+fs.mkdirSync(imgCacheDir, { 'recursive': true });
 
 // --------------------------------------------
 // Global variables
@@ -35,6 +38,7 @@ let InstanceConf = {};
 let TokensList = [];
 let TokensDict = {};
 let DirsDict = {};
+const ImgCacheTimeMap = {}
 
 let isRepeating = false;
 
@@ -214,6 +218,17 @@ const getFileSizeStr = function (rawFileSize) {
 
     return `${padLeft(betterNum.toString(), 7, '&nbsp;')} ${['B','KB','MB','GB'][level]}`;
 };
+const getImgThumbnailFilePath = function (reqPathArr) {
+    let imgFsPath = getRealFsPath(reqPathArr);
+    let imgCachePath = `${imgCacheDir}/${Buffer.from(imgFsPath, 'utf8').toString('hex')}`;
+    return imgCachePath;
+};
+const makeImgThumbnailCache = function (reqPathArr) {
+    let imgFsPath = getRealFsPath(reqPathArr);
+    let imgCachePath = getImgThumbnailFilePath(reqPathArr);
+    ImgCacheTimeMap[imgCachePath] = Date.now();
+    child_process.exec(`convert '${imgFsPath}' -resize 300 '${imgCachePath}'`, function (err, stdout, stderr) {});
+};
 
 // --------------------------------------------
 // Initialization
@@ -278,9 +293,35 @@ makeResponse.goodFile = function (res, options) {
     };
     if (mimeTypeMatchTable.hasOwnProperty(myFileExtName)) {
         fileMimeType = mimeTypeMatchTable[myFileExtName];
-        console.log(`fileMimeType is now ${fileMimeType}`);
         isAttachment = false;
     };
+    // Serve thumbnail
+    if (options.parsedParams.thumbnail === 'true') {
+        let imgTbPath = getImgThumbnailFilePath(options.reqPathArr);
+        console.log(`Requesting a thumbnail: ${imgTbPath}`);
+        let shouldRemakeThumbnail = false;
+        let imgRawPath = getRealFsPath(options.reqPathArr);
+        if (fs.existsSync(imgTbPath)) {
+            // Newer than raw image?
+            let statRaw = fs.statSync(getRealFsPath(options.reqPathArr));
+            if (ImgCacheTimeMap[imgTbPath] && typeof ImgCacheTimeMap[imgTbPath] === 'number' && statRaw.mtimeMs > ImgCacheTimeMap[imgTbPath]) {
+                shouldRemakeThumbnail = true;
+            };
+        } else {
+            shouldRemakeThumbnail = true;
+        };
+        console.log(`shouldRemakeThumbnail: ${shouldRemakeThumbnail}`);
+        let imgFileEntity = fs.readFile(shouldRemakeThumbnail ? imgRawPath : imgTbPath, function (err, stdout, stderr) {
+            res.writeHead(200, {
+                'Content-Type': fileMimeType
+            });
+            res.end(stdout);
+        });
+        if (shouldRemakeThumbnail) {
+            makeImgThumbnailCache(options.reqPathArr);
+        };
+    };
+    // Normal file
     fs.readFile(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
         if (!err) {
             let myResHeaders = {
@@ -291,11 +332,16 @@ makeResponse.goodFile = function (res, options) {
                 rawFileSize = fs.statSync(getRealFsPath(options.reqPathArr) + '/' + myFileName).size;
             } catch (e) {
             };
-            if (rawFileSize !== -33) {
-                myResHeaders['Length'] = rawFileSize;
-            }
             if (isAttachment) {
+                if (rawFileSize !== -33) {
+                    myResHeaders['Length'] = rawFileSize;
+                }
                 myResHeaders['Content-Disposition'] = `attachment; filename="${encodeURIComponent(myFileName)}"`;
+            };
+            if (rawFileSize > 100 * 1024 * 1024) {
+                res.writeHead(200, {});
+                res.end(`Sorry. The support for large files (${getFileSizeStr(rawFileSize)}) is not reliable yet.`);
+                return 0
             };
             res.writeHead(200, myResHeaders);
             res.end(stdout);
@@ -441,7 +487,7 @@ makeResponse.goodDir = function (res, options) {
             let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
             return `<div class="album-cell">
                 <a href="/${reqPathArr.join('/')}/${fileName}?token=${token}">
-                    <img data-prng-id="${Math.random().toString()}" src="/${reqPathArr.join('/')}/${fileName}?token=${token}">
+                    <img data-prng-id="${Math.random().toString()}" src="/${reqPathArr.join('/')}/${fileName}?token=${token}&thumbnail=true">
                 </a>
             </div>`;
         }).join('');
