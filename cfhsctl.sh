@@ -117,7 +117,7 @@ function _start() {
     LOGPATH="${RUNDIRPREF}.log/${USER}/${ITNAME}"
     mkdir -p "${RUNDIRPREF}.pid/${USER}"
     mkdir -p "${RUNDIRPREF}.log/${USER}"
-    mkdir -p "${RUNDIRPREF}.imgcache/${USER}/ITNAME"
+    mkdir -p "${RUNDIRPREF}.imgcache/${USER}/${ITNAME}"
 
     if [[ -e "$PIDFILEPATH" ]]; then
         echo "ERROR:"
@@ -127,10 +127,9 @@ function _start() {
         echo "    command 'rm $PIDFILEPATH' to force starting the instance."
     else
         nohup cfhs-js-serverd run "${ITNAME}" >$LOGPATH 2>&1 &
-        sleep 1
+        sleep 2
         PID="$(cat $PIDFILEPATH)"
         echo 'Starting instance "'$ITNAME'" at PID '$PID'...'
-        echo 'You may run "kill -9 '$PID'" to terminate the process.'
         echo "Logs are available at $LOGPATH"
     fi
 }

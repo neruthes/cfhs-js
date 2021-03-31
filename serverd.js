@@ -38,9 +38,12 @@ let InstanceConf = {};
 let TokensList = [];
 let TokensDict = {};
 let DirsDict = {};
-const ImgCacheTimeMap = {}
+const ImgCacheTimeMap = {};
+const ImgCacheJobQueueObj = {};
+let ImgThumbnailCreationActiveObjId = undefined;
 
 let isRepeating = false;
+let isImageThumbnailCreationBusy = false;
 
 // --------------------------------------------
 // Lib functions
@@ -218,16 +221,42 @@ const getFileSizeStr = function (rawFileSize) {
 
     return `${padLeft(betterNum.toString(), 7, '&nbsp;')} ${['B','KB','MB','GB'][level]}`;
 };
+const sha256sum = function (rawStr) {
+    return require('crypto').createHmac('sha256', 'Neruthes').update(rawStr).digest("hex")
+};
 const getImgThumbnailFilePath = function (reqPathArr) {
     let imgFsPath = getRealFsPath(reqPathArr);
-    let imgCachePath = `${imgCacheDir}/${Buffer.from(imgFsPath, 'utf8').toString('hex')}`;
+    let pathHash = sha256sum(imgFsPath);
+    let imgCachePath = `${imgCacheDir}/${pathHash}`;
     return imgCachePath;
 };
-const makeImgThumbnailCache = function (reqPathArr) {
+const makeImgThumbnailCache = function (jobPtr) {
+    ImgThumbnailCreationActiveObjId = jobPtr.jobId;
+    let reqPathArr = jobPtr.reqPathArr;
     let imgFsPath = getRealFsPath(reqPathArr);
     let imgCachePath = getImgThumbnailFilePath(reqPathArr);
     ImgCacheTimeMap[imgCachePath] = Date.now();
-    child_process.exec(`convert '${imgFsPath}' -resize 300 '${imgCachePath}'`, function (err, stdout, stderr) {});
+    child_process.exec(`convert '${imgFsPath}' -resize 300 '${imgCachePath}'`, function (err, stdout, stderr) {
+        delete ImgCacheJobQueueObj[ImgThumbnailCreationActiveObjId];
+        ImgThumbnailCreationActiveObjId = undefined;
+        isImageThumbnailCreationBusy = false;
+    });
+};
+const makeImgThumbnailCreationRequest = function (reqPathArr) {
+    let jobId = sha256sum(getRealFsPath(reqPathArr));
+    if (ImgCacheJobQueueObj.hasOwnProperty(jobId) && ImgCacheJobQueueObj[jobId].state !== 'done') {
+        console.log(`Job already in queue`);
+        console.log(ImgCacheJobQueueObj[jobId]);
+        return 'err_already_in_queue';
+    };
+    console.log(`------114------`);
+    console.log(reqPathArr);
+    let obj = {
+        'state': 'waiting',
+        'jobId': jobId,
+        'reqPathArr': reqPathArr
+    };
+    ImgCacheJobQueueObj[jobId] = obj;
 };
 
 // --------------------------------------------
@@ -236,13 +265,29 @@ const makeImgThumbnailCache = function (reqPathArr) {
 readConfAndUpdate();
 
 // --------------------------------------------
-// Configuration watchdog
+// Watchdogs
 // --------------------------------------------
+
+// Configuration
 setInterval(function () {
     console.log('[INFO] Configuration watchdog invocation');
     readConfAndUpdate();
-}, 8000);
-console.log(DirsDict);
+}, 1000*10);
+
+// Image thumbnail request queue
+setInterval(function () {
+    if (!isImageThumbnailCreationBusy) {
+        let imgCacheJobQueueArr = Object.keys(ImgCacheJobQueueObj).map(kn=>ImgCacheJobQueueObj[kn]).filter(job => job.state === 'waiting');
+        if (imgCacheJobQueueArr.length > 0) {
+            // Start processing the job
+            console.log(`// Start processing the job`);
+            isImageThumbnailCreationBusy = true;
+            let jobPtr = imgCacheJobQueueArr[0];
+            jobPtr.state = 'working';
+            makeImgThumbnailCache(jobPtr);
+        };
+    };
+}, 500);
 
 // --------------------------------------------
 // Response categories
@@ -318,7 +363,7 @@ makeResponse.goodFile = function (res, options) {
             res.end(stdout);
         });
         if (shouldRemakeThumbnail) {
-            makeImgThumbnailCache(options.reqPathArr);
+            makeImgThumbnailCreationRequest(options.reqPathArr);
         };
     };
     // Normal file
