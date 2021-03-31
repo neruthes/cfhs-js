@@ -26,6 +26,11 @@ fs.writeFileSync(`/tmp/run/cfhs-js.pid/${process.env.USER}/${ITNAME}`, process.p
 // --------------------------------------------
 const HOME = os.homedir();
 let GlobalConf = {};
+let InstanceConfDefault = {
+    'Port': '1453',
+    'ServerName': 'File Server',
+    'UrlPrefix': 'http://127.0.0.1:1453'
+};
 let InstanceConf = {};
 let TokensList = [];
 let TokensDict = {};
@@ -325,7 +330,146 @@ makeResponse.goodDir = function (res, options) {
         };
         return arr.join(' / ');
     };
-    const renderIndexHtml = function (reqPathArr, token) {
+
+    // Decide indexPageType
+    let indexPageType = 'list';
+    console.log('getRealFsPath(options.reqPathArr)');
+    console.log(getRealFsPath(options.reqPathArr));
+    let dirMetadataFilePath_indexType = getRealFsPath(options.reqPathArr) + '/.cfhs-index-type';
+    if (fs.existsSync(dirMetadataFilePath_indexType)) {
+        indexPageType = fs.readFileSync(dirMetadataFilePath_indexType).toString().trim();
+        console.log(`Using indexPageType: ` + indexPageType);
+    };
+
+    // Start rendering
+    let indexPageStyle_common = `
+    html { padding: 0px; margin: 0px; }
+    body {
+        font-family: -apple-system, Helvetica, Arial, sans-serif;
+        font-size: 20px;
+        line-height: 2em;
+        padding: 0px; margin: 0px;
+    }
+    div.cont {
+        padding: 18px;
+    }
+    .album-cell {
+        float: left;
+        width: 300px;
+        height: auto;
+        // max-height: 240px;
+        margin: 0 20px 20px 0;
+    }
+    .album-cell a {
+        display: block;
+        width: 100%;
+    }
+    .album-cell a img {
+        display: block;
+        width: 100%;
+        height: auto;
+        // max-width: 200px;
+    }
+    `;
+    let indexPageStyle = {};
+    indexPageStyle.album = `
+    `;
+    indexPageStyle.list = `
+    header {
+        padding: 2px;
+    }
+    .parentDirHint {}
+    ul, li {
+        display: block;
+    }
+    a.shareButtonSmall {
+        font-size: 18px;
+        color: #666;
+        margin: 0 15px 0 0;
+    }
+    table.main-table,
+    table.main-table tbody {
+        width: 100%;
+        border: none;
+    }
+    table.main-table tr {
+        height: 50px;
+    }
+    table.main-table tr td,
+    table.main-table tr th {
+        text-align: left;
+        // padding-left: 10px;
+        border-bottom: 1px solid #DDD;
+    }
+    table.main-table tr:nth-child(odd) {
+        // background: #F5F5F5;
+    }
+    table.main-table tr td:nth-child(1),
+    table.main-table tr th:nth-child(1) {
+        min-width: calc(58% - 40px);
+        padding-right: 10px;
+    }
+    table.main-table tr td:nth-child(2),
+    table.main-table tr th:nth-child(2) {
+        text-align: right
+        max-width: 100px;
+    }
+    a.normal {
+        font-size: 24px;
+        color: #00E;
+    }
+    a {
+        text-decoration: none;
+    }
+    `;
+    let htmlHead = `<head>
+        <meta charset="utf-8" />
+        <title>${InstanceConf.ServerName}: /${options.reqPathArr.join('/')}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style data-index-type="album">
+        </style>
+        <style data-index-type="list">
+        ${indexPageStyle_common}
+        ${indexPageStyle[indexPageType]}
+        </style>
+    </head>`
+    let renderIndexHtml = {};
+    renderIndexHtml.album = function (reqPathArr, token) {
+        const isAdminToken = validateToken(token, 'A', undefined);
+
+        let albumCells = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
+            let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
+            return `<div class="album-cell">
+                <a href="/${reqPathArr.join('/')}/${fileName}?token=${token}">
+                    <img data-prng-id="${Math.random().toString()}" src="/${reqPathArr.join('/')}/${fileName}?token=${token}">
+                </a>
+            </div>`;
+        }).join('');
+
+        return `<html>
+            ${htmlHead}
+            <body data-index-type="${indexPageType}">
+                <div class="cont">
+                    <header>
+                        <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
+                        <nav class="parentDirHint">
+                            Location: ${genParentTree(reqPathArr, token)}
+                        </nav>
+                    </header>
+                    <div class="album">
+                    ${albumCells}
+                    </div>
+                </div>
+                <script>
+                // let albumCells = document.querySelectorAll('.album-cell img[data-prng-id]');
+                // albumCells.forEach(function (imgNode) {
+                //     return 0;
+                // });
+                </script>
+            </body>
+        </html>`;
+    };
+    renderIndexHtml.list = function (reqPathArr, token) {
         const isAdminToken = validateToken(token, 'A', undefined);
         let listHtml_dirs = [];
         let listHtml_files = [];
@@ -372,71 +516,11 @@ makeResponse.goodDir = function (res, options) {
             });
         };
 
+
+
         return `<html>
-            <head>
-                <meta charset="utf-8" />
-                <title>${InstanceConf.ServerName}: /${options.reqPathArr.join('/')}</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                html { padding: 0px; margin: 0px; }
-                body {
-                    font-family: -apple-system, Helvetica, Arial, sans-serif;
-                    font-size: 20px;
-                    line-height: 2em;
-                    padding: 0px; margin: 0px;
-                }
-                div.cont {
-                    padding: 18px;
-                }
-                header {
-                    padding: 2px;
-                }
-                .parentDirHint {}
-                ul, li {
-                    display: block;
-                }
-                a.shareButtonSmall {
-                    font-size: 18px;
-                    color: #666;
-                    margin: 0 15px 0 0;
-                }
-                table.main-table,
-                table.main-table tbody {
-                    width: 100%;
-                    border: none;
-                }
-                table.main-table tr {
-                    height: 50px;
-                }
-                table.main-table tr td,
-                table.main-table tr th {
-                    text-align: left;
-                    // padding-left: 10px;
-                    border-bottom: 1px solid #DDD;
-                }
-                table.main-table tr:nth-child(odd) {
-                    // background: #F5F5F5;
-                }
-                table.main-table tr td:nth-child(1),
-                table.main-table tr th:nth-child(1) {
-                    min-width: calc(58% - 40px);
-                    padding-right: 10px;
-                }
-                table.main-table tr td:nth-child(2),
-                table.main-table tr th:nth-child(2) {
-                    text-align: right
-                    max-width: 100px;
-                }
-                a.normal {
-                    font-size: 24px;
-                    color: #00E;
-                }
-                a {
-                    text-decoration: none;
-                }
-                </style>
-            </head>
-            <body>
+            ${htmlHead}
+            <body data-index-type="${indexPageType}">
                 <div class="cont">
                     <header>
                         <h1>${ InstanceConf.ServerName || 'File Server' }</h1>
@@ -463,14 +547,14 @@ makeResponse.goodDir = function (res, options) {
         res.writeHead(200, {
             'Content-Type': 'text/html',
         });
-        res.end(renderIndexHtml(options.reqPathArr, options.parsedParams.token));
+        res.end(renderIndexHtml[indexPageType](options.reqPathArr, options.parsedParams.token));
     } else {
         fs.readdir(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
             if (!err) {
                 res.writeHead(200, {
                     'Content-Type': 'text/html',
                 });
-                res.end(renderIndexHtml(options.reqPathArr, options.parsedParams.token));
+                res.end(renderIndexHtml[indexPageType](options.reqPathArr, options.parsedParams.token));
             } else {
                 res.writeHead(404);
                 res.end(`404 Not Found: ${options.reqPathArr}`);
