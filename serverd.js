@@ -520,11 +520,10 @@ makeResponse.goodDir = function (res, options) {
     let indexPageStyle = {};
     indexPageStyle.album = `
     .album-cell {
-        // float: left;
         display: inline-block;
-        // width: 300px;
+        min-width: 100px;
+        background: #EEE;
         height: 240px;
-        // max-height: 240px;
         margin: 0 10px 10px 0;
     }
     .album-cell a {
