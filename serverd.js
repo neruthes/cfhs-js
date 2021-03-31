@@ -522,6 +522,7 @@ makeResponse.goodDir = function (res, options) {
     .album-cell {
         display: inline-block;
         min-width: 100px;
+        max-width: 900px;
         background: #EEE;
         height: 240px;
         margin: 0 10px 10px 0;
