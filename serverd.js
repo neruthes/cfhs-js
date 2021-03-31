@@ -444,39 +444,24 @@ makeResponse.goodDir = function (res, options) {
     div.cont {
         padding: 18px;
     }
-    .album-cell {
-        float: left;
-        width: 300px;
-        height: auto;
-        // max-height: 240px;
-        margin: 0 20px 20px 0;
-    }
-    .album-cell a {
-        display: block;
-        width: 100%;
-    }
-    .album-cell a img {
-        display: block;
-        width: 100%;
-        height: auto;
-        // max-width: 200px;
-    }
     header {
         padding: 2px;
     }
     .parentDirHint {}
-    `;
-    let indexPageStyle = {};
-    indexPageStyle.album = `
-    `;
-    indexPageStyle.list = `
-    ul, li {
-        display: block;
+    a.normal {
+        font-size: 24px;
+        color: #00E;
+    }
+    a {
+        text-decoration: none;
     }
     a.shareButtonSmall {
         font-size: 18px;
         color: #666;
         margin: 0 15px 0 0;
+    }
+    table.main-table {
+        margin: 0 0 30px;
     }
     table.main-table,
     table.main-table tbody {
@@ -505,13 +490,30 @@ makeResponse.goodDir = function (res, options) {
         text-align: right
         max-width: 100px;
     }
-    a.normal {
-        font-size: 24px;
-        color: #00E;
+    `;
+    let indexPageStyle = {};
+    indexPageStyle.album = `
+    .album-cell {
+        // float: left;
+        display: inline-block;
+        // width: 300px;
+        height: 240px;
+        // max-height: 240px;
+        margin: 0 10px 10px 0;
     }
-    a {
-        text-decoration: none;
+    .album-cell a {
+        display: block;
+        width: auto;
+        height: 100%;
     }
+    .album-cell a img {
+        display: block;
+        width: auto;
+        height: 100%;
+        // max-width: 200px;
+    }
+    `;
+    indexPageStyle.list = `
     `;
     let htmlHead = `<head>
         <meta charset="utf-8" />
@@ -527,12 +529,20 @@ makeResponse.goodDir = function (res, options) {
     let renderIndexHtml = {};
     renderIndexHtml.album = function (reqPathArr, token) {
         const isAdminToken = validateToken(token, 'A', undefined);
+        let listHtml_dirs = getDirSubdirs(getRealFsPath(reqPathArr)).map(function (dirName) {
+            return `<tr>
+                <td class="">
+                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.join('/')}/${dirName}`, token) : ''}
+                    <a class="normal" href="/${reqPathArr.join('/')}/${dirName}/?token=${token}">${dirName}/</a>
+                </td>
+            </tr>`;
+        });
 
         let albumCells = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
             let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
             return `<div class="album-cell">
                 <a href="/${reqPathArr.join('/')}/${fileName}?token=${token}">
-                    <img data-prng-id="${Math.random().toString()}" src="/${reqPathArr.join('/')}/${fileName}?token=${token}&thumbnail=true">
+                    <img src="/${reqPathArr.join('/')}/${fileName}?token=${token}&thumbnail=true">
                 </a>
             </div>`;
         }).join('');
@@ -547,6 +557,16 @@ makeResponse.goodDir = function (res, options) {
                             Location: ${genParentTree(reqPathArr, token)}
                         </nav>
                     </header>
+                    ${(listHtml_dirs.length === 0 ? '' : (function () {
+                        return `<table class="main-table">
+                            <tbody>
+                                <tr>
+                                    <th>Subdirectories</th>
+                                </tr>
+                                ${listHtml_dirs.join('')}
+                            </tbody>
+                        </table>`
+                    })())}
                     <div class="album">
                     ${albumCells}
                     </div>
@@ -606,8 +626,6 @@ makeResponse.goodDir = function (res, options) {
                 </tr>`;
             });
         };
-
-
 
         return `<html>
             ${htmlHead}
@@ -692,6 +710,21 @@ http.createServer(function (req, res) {
     let reqPath = req.url;
     let parsedParams = {};
 
+    if (req.url.indexOf('?') !== -1) {
+        // Search params found
+        reqPath = req.url.split('?')[0];
+        let rawParams = req.url.split('?')[1];
+        parsedParams = parseSearchParams(rawParams);
+    } else {
+        res.writeHead(400);
+        res.end('Bad request: Too few search parameters.');
+        return 0;
+    };
+    let reqPathArr = reqPath.replace(/(^\/|\/$)/g, '').split('/');
+    let pathType = 'file';
+    if (reqPath[reqPath.length - 1] === '/') {
+        pathType = 'dir';
+    };
     if (req.url.length < 2) {
         makeResponse.deny(res, {
             parsedParams: parsedParams,
@@ -703,16 +736,6 @@ http.createServer(function (req, res) {
         return 0;
     };
 
-    if (req.url.indexOf('?') !== -1) {
-        // Search params found
-        reqPath = req.url.split('?')[0];
-        let rawParams = req.url.split('?')[1];
-        parsedParams = parseSearchParams(rawParams);
-    } else {
-        return 0;
-    };
-    let reqPathArr = reqPath.replace(/(^\/|\/$)/g, '').split('/');
-
     // Send to API router?
     if (req.url.indexOf('/.api/') === 0) {
         apiRouter(res, {
@@ -720,11 +743,6 @@ http.createServer(function (req, res) {
             parsedParams: parsedParams
         });
         return 0;
-    };
-
-    let pathType = 'file';
-    if (reqPath[reqPath.length - 1] === '/') {
-        pathType = 'dir';
     };
 
     // Normal file resource
@@ -736,7 +754,6 @@ http.createServer(function (req, res) {
             if (reqPath !== '/' && reqPathArr.filter(x => x[0] === '.').length !== 0) {
                 makeResponse.deny(res, {
                     parsedParams: parsedParams,
-                    // tokenType: validateToken(parsedParams.token, 'A') ? 'A' : 'V',
                     pathType: pathType,
                     reqPathArr: reqPathArr,
                     msg: 'This is a hidden file.'
@@ -746,7 +763,6 @@ http.createServer(function (req, res) {
             if (pathType === 'file') {
                 makeResponse.goodFile(res, {
                     parsedParams: parsedParams,
-                    // tokenType: validateToken(parsedParams.token, 'A') ? 'A' : 'V',
                     pathType: pathType,
                     reqPathArr: reqPathArr
                 });
@@ -773,7 +789,8 @@ http.createServer(function (req, res) {
         makeResponse.bad(res, {
             parsedParams: parsedParams,
             pathType: pathType,
-            reqPath: reqPath
+            reqPath: reqPath,
+            msg: 'Bad token or bad file path'
         });
     };
 }).listen(InstanceConf.Port);
