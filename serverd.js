@@ -20,8 +20,8 @@ const ITNAME = process.argv[3];
 // --------------------------------------------
 console.log(`Starting instance: ~/.config/cfhs-js/${ITNAME}`);
 console.log(`My PID is ${process.pid} (${process.env.USER})`);
-fs.writeFileSync(`/tmp/run/cfhs-js.pid/${process.env.USER}/${ITNAME}`, process.pid.toString());
-let imgCacheDir = `/tmp/run/cfhs-js.imgtb/${process.env.USER}`;
+fs.writeFileSync(`/tmp/run.${process.env.USER}/cfhs-js.pid/${ITNAME}`, process.pid.toString());
+let imgCacheDir = `/tmp/run.${process.env.USER}/cfhs-js.imgtb/`;
 fs.mkdirSync(imgCacheDir, { 'recursive': true });
 
 // --------------------------------------------

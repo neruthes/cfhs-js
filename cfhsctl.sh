@@ -7,7 +7,7 @@
 
 ### Constants
 DDIR=$HOME/DEV/cfhs-js
-RUNDIRPREF=/tmp/run/cfhs-js
+RUNDIRPREF=/tmp/run.$USER/cfhs-js
 # mkdir -p $RUNDIRPREF./$USER
 
 ### Create ~/.config dirs
