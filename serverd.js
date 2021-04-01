@@ -21,7 +21,7 @@ const ITNAME = process.argv[3];
 console.log(`Starting instance: ~/.config/cfhs-js/${ITNAME}`);
 console.log(`My PID is ${process.pid} (${process.env.USER})`);
 fs.writeFileSync(`/tmp/run/cfhs-js.pid/${process.env.USER}/${ITNAME}`, process.pid.toString());
-let imgCacheDir = `/tmp/run/cfhs-js.imgcache/${process.env.USER}/${ITNAME}`;
+let imgCacheDir = `/tmp/run/cfhs-js.imgtb/${process.env.USER}`;
 fs.mkdirSync(imgCacheDir, { 'recursive': true });
 
 // --------------------------------------------
@@ -39,9 +39,9 @@ let TokensList = [];
 let TokensDict = {};
 let DirsDict = {};
 const ImgCacheTimeMap = {};
-if (fs.existsSync(`${imgCacheDir}/catalog.json`)) {
+if (fs.existsSync(`${imgCacheDir}/catalog.${ITNAME}.json`)) {
     try {
-        let jsonObj = JSON.parse(fs.readFileSync(`${imgCacheDir}/catalog.json`).toString());
+        let jsonObj = JSON.parse(fs.readFileSync(`${imgCacheDir}/catalog.${ITNAME}.json`).toString());
         Object.keys(jsonObj).map(function (jobId) {
             ImgCacheTimeMap[jobId] = jsonObj[jobId];
         });
@@ -268,7 +268,7 @@ const makeImgThumbnailCreationRequest = function (reqPathArr) {
     ImgCacheJobQueueObj[jobId] = obj;
 };
 const dumpImgCacheTimeMap = function () {
-    fs.writeFileSync(`${imgCacheDir}/catalog.json`, JSON.stringify(ImgCacheTimeMap, '\t', 2));
+    fs.writeFileSync(`${imgCacheDir}/catalog.${ITNAME}.json`, JSON.stringify(ImgCacheTimeMap, '\t', 2));
 };
 
 // --------------------------------------------
@@ -302,6 +302,11 @@ setInterval(function () {
         console.log(`isImageThumbnailCreationBusy: ${isImageThumbnailCreationBusy}`);
     };
 }, 500);
+
+// Image thumbnail garbage collection
+setInterval(function () {
+    // TODO
+}, 1000*30);
 
 // --------------------------------------------
 // Response categories
