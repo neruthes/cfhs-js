@@ -163,10 +163,6 @@ ARG0=$2
 ARG1=$3
 ARG2=$4
 
-### Testing
-# _mkdefault
-# exit 0
-
 case $SUBCOMMAND in
     h|help )
         _help
