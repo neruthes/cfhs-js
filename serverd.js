@@ -114,7 +114,6 @@ const parseDirs = function (txt) {
         if (line.indexOf(':') !== -1) {
             // Has cname declaration
             let lineArr = line.split(':');
-            // console.log(`lineArr: ${lineArr}`);
             localDirsDict[lineArr[1]] = lineArr[0];
         } else {
             // Use the base name
@@ -290,8 +289,6 @@ setInterval(function () {
 // Image thumbnail request queue
 setInterval(function () {
     if (!isImageThumbnailCreationBusy) {
-        // console.log(`Current thumbnail creation job queue:`);
-        // console.log(ImgCacheJobQueueObj);
         let imgCacheJobQueueArr = Object.keys(ImgCacheJobQueueObj).map(kn=>ImgCacheJobQueueObj[kn]).filter(job => job.state === 'waiting');
         if (imgCacheJobQueueArr.length > 0) {
             // Start processing the job
@@ -315,7 +312,7 @@ makeResponse.bad = function (res, options) {
     if (options.reqPathArr) {
         res.end(`404 Not Found: /${options.reqPathArr.join('/')}`);
     } else {
-        res.end(`404 Not Found: ${options.reqPath}`);
+        res.end(`404 Not Found: ${options.reqPath}\n${options.msg || ''}`);
     };
 };
 makeResponse.deny = function (res, options) {
@@ -360,11 +357,9 @@ makeResponse.goodFile = function (res, options) {
     // Serve thumbnail
     if (options.parsedParams.thumbnail === 'true') {
         let imgTbPath = getImgThumbnailFilePath(options.reqPathArr);
-        // console.log(`Requesting a thumbnail: ${imgTbPath}`);
         let shouldRemakeThumbnail = false;
         let imgRawPath = getRealFsPath(options.reqPathArr);
         if (fs.existsSync(imgTbPath)) {
-            // console.log(`Found thumbnail cache at ${imgTbPath}`);
             // Newer than raw image?
             let statRaw = fs.statSync(getRealFsPath(options.reqPathArr));
             let jobId = sha256sum(getRealFsPath(options.reqPathArr));
@@ -376,7 +371,6 @@ makeResponse.goodFile = function (res, options) {
         } else {
             shouldRemakeThumbnail = true;
         };
-        // console.log(`shouldRemakeThumbnail: ${shouldRemakeThumbnail}`);
         let imgFileEntity = fs.readFileSync(shouldRemakeThumbnail ? imgRawPath : imgTbPath);
         res.writeHead(200, {
             'Content-Type': fileMimeType
@@ -412,13 +406,19 @@ makeResponse.goodFile = function (res, options) {
             res.end(stdout);
         } else {
             res.writeHead(404);
-            res.end(`404 Not Found: ${options.reqPath}Arr`);
+            res.end(`404 Not Found: ${options.reqPathArr}`);
         };
     });
 };
 makeResponse.goodDir = function (res, options) {
+    const genShareButtonHref = function (filedirpath, token) {
+        return `/.api/shareResource?token=${token}&filedirpath=${encodeURIComponent(filedirpath)}`;
+    };
     const genShareButtonSmall = function (filedirpath, token) {
-        return `<a class="shareButtonSmall" target="_blank" href="/.api/shareResource?token=${token}&filedirpath=${encodeURIComponent(filedirpath)}">[Share]</a>`;
+        return `<a class="shareButtonSmall" target="_blank" href="${genShareButtonHref(filedirpath, token)}">[Share]</a>`;
+    };
+    const genShareButtonAlbumCell = function (filedirpath, token) {
+        return `<a class="shareButtonAlbumCell" target="_blank" href="${genShareButtonHref(filedirpath, token)}">Share</a>`;
     };
     const genUrlToPath = function (reqPathArr, token) {
         let dirName = reqPathArr.slice(0).reverse()[0];
@@ -473,9 +473,11 @@ makeResponse.goodDir = function (res, options) {
         font-size: 26px;
         font-weight: 500;
     }
-    .parentDirHint {}
+    .parentDirHint {
+        font-size: 22px;
+    }
     a.normal {
-        font-size: 24px;
+        font-size: 22px;
         color: #00E;
     }
     a {
@@ -520,23 +522,42 @@ makeResponse.goodDir = function (res, options) {
     let indexPageStyle = {};
     indexPageStyle.album = `
     .album-cell {
+        background: #EEE;
+        position: relative;
+        top: 0px;
+        left: 0px;
         display: inline-block;
         min-width: 100px;
         max-width: 500px;
-        background: #EEE;
         height: 240px;
         margin: 0 10px 10px 0;
     }
-    .album-cell a {
+    .album-cell a.cell-link {
         display: block;
         width: auto;
         height: 100%;
     }
-    .album-cell a img {
+    .album-cell a.cell-link img {
         display: block;
         width: auto;
         height: 100%;
         // max-width: 200px;
+    }
+    .album-cell a.shareButtonAlbumCell {
+        display: none;
+    }
+    .album-cell:hover a.shareButtonAlbumCell {
+        font-size: 18px;
+        line-height: 24px;
+        color: #FFF;
+        background: #000;
+        border-radius: 5px;
+        display: block;
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: auto;
+        padding: 5px 8px;
     }
     `;
     indexPageStyle.list = `
@@ -565,17 +586,17 @@ makeResponse.goodDir = function (res, options) {
         let listHtml_dirs = getDirSubdirs(getRealFsPath(reqPathArr)).map(function (dirName) {
             return `<tr>
                 <td class="">
-                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(dirName)}`, token) : ''}
+                    ${isAdminToken ? genShareButtonSmall(`/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(dirName)}/`, token) : ''}
                     <a class="normal" href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(dirName)}/?token=${token}">${dirName}/</a>
                 </td>
             </tr>`;
         });
 
         let albumCells = getDirFiles(getRealFsPath(reqPathArr)).map(function (fileName) {
-            let rawFileSize = fs.statSync(getRealFsPath(reqPathArr) + '/' + fileName).size;
             return `<div class="album-cell">
-                <a href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}?token=${token}">
+                <a class="cell-link" href="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}?token=${token}">
                     <img src="/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}?token=${token}&thumbnail=true">
+                    ${genShareButtonAlbumCell(`/${reqPathArr.map(x=>encodeURIComponent(x)).join('/')}/${encodeURIComponent(fileName)}`, token)}
                 </a>
             </div>`;
         }).join('');
@@ -708,9 +729,11 @@ const parseSearchParams = function (rawParams) {
 const apiEndpoints = {};
 apiEndpoints.shareResource = function (res, options) {
     let tokenRequest = newToken('V', decodeURIComponent(options.parsedParams.filedirpath), 24*3600*1000);
-    let targetUrl = decodeURIComponent(options.parsedParams.filedirpath) + '/';
-    if (targetUrl === '//') {
-        targetUrl = '/';
+    let targetUrl = decodeURIComponent(options.parsedParams.filedirpath);
+    if (targetUrl.split('').reverse()[0] === '/') {
+        // Is directory
+        // targetUrl = '/';
+    } else {
     };
     res.writeHead(200, {
         'Content-Type': 'text/html'
@@ -719,11 +742,13 @@ apiEndpoints.shareResource = function (res, options) {
 };
 const apiRouter = function (res, options) {
     let apiName = options.reqPath.replace('/.api/', '').replace(/\?.*$/, '');
-    console.log(`apiName: ${apiName}`);
+    console.log(`Invoking API endpoint: ${apiName}`);
     if (apiEndpoints[apiName] && validateToken(options.parsedParams.token, 'A', undefined)) {
         apiEndpoints[apiName](res, options);
     } else {
-        makeResponse.bad(res, options);
+        let _options = Object.keys(options).map(x=>options[x]);
+        _options.msg = `Bad API query`;
+        makeResponse.bad(res, _options);
     };
 };
 http.createServer(function (req, res) {
