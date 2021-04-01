@@ -87,7 +87,7 @@ function _ls() {
 }
 function _printStatusLine() {
     ITNAME=$1
-    PIDFILEPATH="${RUNDIRPREF}.pid/${USER}/${ITNAME}"
+    PIDFILEPATH="${RUNDIRPREF}.pid/${ITNAME}"
     # echo "$ITARR hello world"
     if [[ -e "$PIDFILEPATH" ]]; then
         #statements
@@ -113,11 +113,11 @@ function _new() {
 function _start() {
     ITNAME=$1
 
-    PIDFILEPATH="${RUNDIRPREF}.pid/${USER}/${ITNAME}"
-    LOGPATH="${RUNDIRPREF}.log/${USER}/${ITNAME}"
-    mkdir -p "${RUNDIRPREF}.pid/${USER}"
-    mkdir -p "${RUNDIRPREF}.log/${USER}"
-    mkdir -p "${RUNDIRPREF}.imgcache/${USER}/${ITNAME}"
+    PIDFILEPATH="${RUNDIRPREF}.pid/${ITNAME}"
+    LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
+    mkdir -p "${RUNDIRPREF}.pid"
+    mkdir -p "${RUNDIRPREF}.log"
+    mkdir -p "${RUNDIRPREF}.imgtb"
 
     if [[ -e "$PIDFILEPATH" ]]; then
         echo "ERROR:"
@@ -136,10 +136,8 @@ function _start() {
 function _end() {
     ITNAME=$1
 
-    PIDFILEPATH="${RUNDIRPREF}.pid/${USER}/${ITNAME}"
-    LOGPATH="${RUNDIRPREF}.log/${USER}/${ITNAME}"
-    if [[ -e "$PIDFILEPATH" ]]; then
-        PID="$(cat "$PIDFILEPATH")"
+    PIDFILEPATH="${RUNDIRPREF}.pid/${ITNAME}"
+    LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
         ps ax | grep "$PID"
         echo "... Is this process ($PID) PID correct?"
         printf "Your answer (y/n) > "
@@ -147,7 +145,8 @@ function _end() {
         read UANSWER
         if [[ "${UANSWER:0:1}" == "y"* ]]; then
             kill -9 "$PID"
-            rm "$PIDFILEPATH"
+            PIDFILEPATH="${RUNDIRPREF}.pid/${ITNAME}"
+
             echo "Killed instance '$ITNAME' at PID $PID"
         fi
     else
