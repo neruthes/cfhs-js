@@ -117,7 +117,7 @@ function _start() {
     LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
     mkdir -p "${RUNDIRPREF}.pid"
     mkdir -p "${RUNDIRPREF}.log"
-    mkdir -p "${RUNDIRPREF}.imgtb"
+    mkdir -p "${RUNDIRPREF}.imgcache/"
 
     if [[ -e "$PIDFILEPATH" ]]; then
         echo "ERROR:"
@@ -138,6 +138,8 @@ function _end() {
 
     PIDFILEPATH="${RUNDIRPREF}.pid/${ITNAME}"
     LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
+    if [[ -e "$PIDFILEPATH" ]]; then
+        PID="$(cat "$PIDFILEPATH")"
         ps ax | grep "$PID"
         echo "... Is this process ($PID) PID correct?"
         printf "Your answer (y/n) > "
@@ -145,8 +147,7 @@ function _end() {
         read UANSWER
         if [[ "${UANSWER:0:1}" == "y"* ]]; then
             kill -9 "$PID"
-            PIDFILEPATH="${RUNDIRPREF}.pid/${ITNAME}"
-
+            rm "$PIDFILEPATH"
             echo "Killed instance '$ITNAME' at PID $PID"
         fi
     else
