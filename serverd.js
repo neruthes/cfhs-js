@@ -8,6 +8,7 @@ const fs = require('fs');
 const http = require('http');
 const child_process = require('child_process');
 const sh = require('child_process').execSync;
+const pkg = require('./package.json');
 
 // --------------------------------------------
 // Arguments
@@ -57,8 +58,22 @@ let isRepeating = false;
 let isImageThumbnailCreationBusy = false;
 
 // --------------------------------------------
+// Global constants
+// --------------------------------------------
+const CFHS_RESHEADER_SERVER = `cfhs-js/${pkg.version}`;
+
+// --------------------------------------------
 // Lib functions
 // --------------------------------------------
+const genBasicResHeader = function (props) {
+    let obj = {
+        'Server': CFHS_RESHEADER_SERVER,
+        'Date': (new Date()).toUTCString(),
+        'Access-Control-Allow-Origin': '*'
+    };
+    Object.keys(props).map(x => obj[x] = props[x]);
+    return obj;
+};
 const parseConf = function (txt) {
     let arr = txt.trim().split('\n').filter(x => x[0] !== '#');
     let obj = {};
@@ -84,8 +99,8 @@ const updateTokensDB = function (txt) {
             'Expiry': lineObj[4],
             'ExpiryTS': (new Date(lineObj[4])).getTime()
         };
-        if (tokenItem.Type === 'V' && tokenItem.ExpiryTS + 24*3600*1000 < Date.now()) {
-            console.log(`[INFO] Token '${tokenItem.Token}' has expired for 24 hours. Will not keep it.`);
+        if (tokenItem.Type === 'V' && tokenItem.ExpiryTS + 48*3600*1000 < Date.now()) {
+            console.log(`[INFO] Token '${tokenItem.Token}' has expired for 48 hours. Will not keep it.`);
             return 0;
         };
         _TokensList.push(tokenItem);
@@ -105,7 +120,7 @@ const serializeTokens = function (arr) {
         ].join(',')
     }).join('\n');
 };
-const dumpTokens = function (arr) {
+const dumpTokens = function () {
     fs.writeFileSync(`${HOME}/.config/cfhs-js/${ITNAME}/tokens`, serializeTokens(TokensList));
 };
 const parseDirs = function (txt) {
@@ -130,6 +145,7 @@ const readConfAndUpdate = function() {
     // Read TokensDB
     let TokensDB_txt = fs.readFileSync(`${HOME}/.config/cfhs-js/${ITNAME}/tokens`).toString().trim();
     updateTokensDB(TokensDB_txt);
+    dumpTokens();
 
     // Try finding an admin token
     probeAdminToken();
@@ -189,7 +205,6 @@ const validateToken = function (candidateToken, desiredType, attemptingPath) {
             return false;
         }
     };
-    // console.log(`validateToken: success: ${candidateToken}`);
     return true;
 };
 const getRealFsPath = function (reqPathArr) {
@@ -327,14 +342,19 @@ makeResponse.deny = function (res, options) {
     res.end(`403 Access Denied: /${options.reqPathArr.join('/')}\n${options.msg || ''}`);
 };
 makeResponse.goodFile = function (res, options) {
-    let isAttachment = true;
+    let returnMode = 'plain';
+    // Pissble returnMode values:
+    // plain: Plain text
+    // attachment: Whole file as an attachment
+    // stream: Send 10 MB in every chunk
     let myFileName = options.reqPathArr.slice().reverse()[0];
     let myFileExtName = myFileName.split('.').reverse()[0].toLowerCase();
     let fileMimeType = 'application/octet-stream';
     let extNamesFor_text = ['txt','md','js','css','html','sh'];
     if (extNamesFor_text.indexOf(myFileExtName) !== -1) {
+        // File is plain text
         fileMimeType = 'text/plain';
-        isAttachment = false;
+        returnMode = 'plain';
     };
     let mimeTypeMatchTable = {
         'pdf': 'application/pdf',
@@ -357,7 +377,12 @@ makeResponse.goodFile = function (res, options) {
     };
     if (mimeTypeMatchTable.hasOwnProperty(myFileExtName)) {
         fileMimeType = mimeTypeMatchTable[myFileExtName];
-        isAttachment = false;
+        reutrnMode = 'attachment';
+    };
+    if (fileMimeType.match(/^(video|audio)/)) {
+        // Is stream media
+        returnMode = 'stream';
+        // console.log('Return mode: stream');
     };
     // Serve thumbnail
     if (options.parsedParams.thumbnail === 'true') {
@@ -377,9 +402,10 @@ makeResponse.goodFile = function (res, options) {
             shouldRemakeThumbnail = true;
         };
         let imgFileEntity = fs.readFileSync(shouldRemakeThumbnail ? imgRawPath : imgTbPath);
-        res.writeHead(200, {
-            'Content-Type': fileMimeType
-        });
+        let myHeaders = genBasicResHeader({
+            'Content-Type': fileMimeType,
+        })
+        res.writeHead(200, myHeaders);
         res.end(imgFileEntity);
         if (shouldRemakeThumbnail) {
             makeImgThumbnailCreationRequest(options.reqPathArr);
@@ -387,27 +413,34 @@ makeResponse.goodFile = function (res, options) {
     };
     // Normal file
     fs.readFile(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
+        if (err) {
+            console.log(err);
+            return 1;
+        };
         if (!err) {
-            let myResHeaders = {
-                'Content-Type': fileMimeType
+            let myResHeaderProps = {
+                'Content-Type': fileMimeType,
+                'Server': CFHS_RESHEADER_SERVER
             };
+            // Content-Length
             let rawFileSize = -33;
-            try {
-                rawFileSize = fs.statSync(getRealFsPath(options.reqPathArr) + '/' + myFileName).size;
-            } catch (e) {
+            rawFileSize = fs.statSync(getRealFsPath(options.reqPathArr)).size;
+            if (rawFileSize !== -33) {
+                myResHeaderProps['Content-Length'] = rawFileSize;
             };
-            if (isAttachment) {
-                if (rawFileSize !== -33) {
-                    myResHeaders['Length'] = rawFileSize;
-                }
-                myResHeaders['Content-Disposition'] = `attachment; filename="${encodeURIComponent(myFileName)}"`;
+            // Attachment?
+            if (returnMode === 'attachment') {
+                myResHeaderProps['Content-Disposition'] = `attachment; filename="${encodeURIComponent(myFileName)}"`;
             };
             if (rawFileSize > 100 * 1024 * 1024) {
                 res.writeHead(200, {});
                 res.end(`Sorry. The support for large files (${getFileSizeStr(rawFileSize)}) is not reliable yet.`);
-                return 0
+                return 1;
+            } else {
             };
-            res.writeHead(200, myResHeaders);
+            let finalHeaders = genBasicResHeader(myResHeaderProps);
+            console.log(finalHeaders);
+            res.writeHead(200, finalHeaders);
             res.end(stdout);
         } else {
             res.writeHead(404);
