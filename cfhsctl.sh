@@ -140,7 +140,7 @@ function _end() {
     LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
     if [[ -e "$PIDFILEPATH" ]]; then
         PID="$(cat "$PIDFILEPATH")"
-        ps ax | grep "$PID"
+        ps ax | grep node | grep "$PID"
         echo "... Is this process ($PID) PID correct?"
         printf "Your answer (y/n) > "
         UANSWER=n
@@ -200,10 +200,10 @@ case $SUBCOMMAND in
         _start "$ARG0"
         ;;
     log )
-        cat "${RUNDIRPREF}.log/${USER}/${ARG0}"
+        cat "${RUNDIRPREF}.log/${ARG0}"
         ;;
     tail )
-        tail -f "${RUNDIRPREF}.log/${USER}/${ARG0}"
+        tail -f "${RUNDIRPREF}.log/${ARG0}"
         ;;
     sa|status-all )
         _statusAll

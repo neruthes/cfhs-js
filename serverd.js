@@ -432,7 +432,7 @@ makeResponse.goodFile = function (res, options) {
             if (returnMode === 'attachment') {
                 myResHeaderProps['Content-Disposition'] = `attachment; filename="${encodeURIComponent(myFileName)}"`;
             };
-            if (rawFileSize > 100 * 1024 * 1024) {
+            if (rawFileSize > 400 * 1024 * 1024) {
                 res.writeHead(200, {});
                 res.end(`Sorry. The support for large files (${getFileSizeStr(rawFileSize)}) is not reliable yet.`);
                 return 1;
