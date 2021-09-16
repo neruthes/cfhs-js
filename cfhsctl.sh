@@ -117,7 +117,7 @@ function _start() {
     LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
     mkdir -p "${RUNDIRPREF}.pid"
     mkdir -p "${RUNDIRPREF}.log"
-    mkdir -p "${RUNDIRPREF}.imgcache/"
+    mkdir -p "${RUNDIRPREF}.imgtb/"
 
     if [[ -e "$PIDFILEPATH" ]]; then
         echo "ERROR:"
@@ -126,8 +126,8 @@ function _start() {
         echo "    If you believe that the instance is not running, you may run"
         echo "    command 'rm $PIDFILEPATH' to force starting the instance."
     else
-        nohup cfhs-js-serverd run "${ITNAME}" >$LOGPATH 2>&1 &
-        sleep 2
+        daemonize $(which cfhs-js-serverd) run ${ITNAME} -o $LOGPATH -e $LOGPATH -p $PIDFILEPATH
+        sleep 1
         PID="$(cat $PIDFILEPATH)"
         echo 'Starting instance "'$ITNAME'" at PID '$PID'...'
         echo "Logs are available at $LOGPATH"
@@ -140,14 +140,19 @@ function _end() {
     LOGPATH="${RUNDIRPREF}.log/${ITNAME}"
     if [[ -e "$PIDFILEPATH" ]]; then
         PID="$(cat "$PIDFILEPATH")"
+        echo "============================================="
         ps ax | grep node | grep "$PID"
+        echo "============================================="
         echo "... Is this process ($PID) PID correct?"
         printf "Your answer (y/n) > "
         UANSWER=n
         read UANSWER
         if [[ "${UANSWER:0:1}" == "y"* ]]; then
-            kill -9 "$PID"
-            rm "$PIDFILEPATH"
+            # kill -9 "$PID"
+            # rm "$PIDFILEPATH"
+            start-stop-daemon --stop \
+                --user $USER \
+                --pidfile ${PIDFILEPATH}
             echo "Killed instance '$ITNAME' at PID $PID"
         fi
     else

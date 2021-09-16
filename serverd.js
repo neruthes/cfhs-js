@@ -47,7 +47,7 @@ if (fs.existsSync(`${imgCacheDir}/catalog.${ITNAME}.json`)) {
             ImgCacheTimeMap[jobId] = jsonObj[jobId];
         });
         console.log(`Found ImgCacheTimeMap cache catalog.`);
-        console.log(ImgCacheTimeMap);
+        // console.log(ImgCacheTimeMap);
     } catch (e) {
     }
 };
@@ -56,11 +56,13 @@ let ImgThumbnailCreationActiveObjId = undefined;
 
 let isRepeating = false;
 let isImageThumbnailCreationBusy = false;
+let heapImageThumbnailCreationBusy = 0;
 
 // --------------------------------------------
 // Global constants
 // --------------------------------------------
 const CFHS_RESHEADER_SERVER = `cfhs-js/${pkg.version}`;
+const MAX_CONVERT_THREADS = 4;
 
 // --------------------------------------------
 // Lib functions
@@ -266,6 +268,7 @@ const makeImgThumbnailCache = function (jobPtr) {
         dumpImgCacheTimeMap();
         ImgThumbnailCreationActiveObjId = undefined;
         isImageThumbnailCreationBusy = false;
+        heapImageThumbnailCreationBusy += -1;
     });
 };
 const makeImgThumbnailCreationRequest = function (reqPathArr) {
@@ -303,18 +306,21 @@ setInterval(function () {
 
 // Image thumbnail request queue
 setInterval(function () {
-    if (!isImageThumbnailCreationBusy) {
+    // if (!isImageThumbnailCreationBusy) {
+    if (heapImageThumbnailCreationBusy < MAX_CONVERT_THREADS) {
         let imgCacheJobQueueArr = Object.keys(ImgCacheJobQueueObj).map(kn=>ImgCacheJobQueueObj[kn]).filter(job => job.state === 'waiting');
         if (imgCacheJobQueueArr.length > 0) {
             // Start processing the job
-            console.log(`Start processing a thumbnail creation job`);
             isImageThumbnailCreationBusy = true;
+            heapImageThumbnailCreationBusy += 1;
             let jobPtr = imgCacheJobQueueArr[0];
             jobPtr.state = 'working';
+            console.log(`Creating thumbnail:  ${jobPtr.reqPathArr.join('/')}`);
             makeImgThumbnailCache(jobPtr);
         };
     } else {
-        console.log(`isImageThumbnailCreationBusy: ${isImageThumbnailCreationBusy}`);
+        // console.log(`isImageThumbnailCreationBusy: ${isImageThumbnailCreationBusy}`);
+        console.log(`CONVERT_THREADS: ${heapImageThumbnailCreationBusy}`);
     };
 }, 500);
 
@@ -385,7 +391,8 @@ makeResponse.goodFile = function (res, options) {
         // console.log('Return mode: stream');
     };
     // Serve thumbnail
-    if (options.parsedParams.thumbnail === 'true') {
+    if (options.parsedParams.thumbnail === 'true' && ['png','jpg','jpeg','gif'].indexOf(myFileExtName) != -1) {
+        // Must be an image!
         let imgTbPath = getImgThumbnailFilePath(options.reqPathArr);
         let shouldRemakeThumbnail = false;
         let imgRawPath = getRealFsPath(options.reqPathArr);
@@ -410,6 +417,7 @@ makeResponse.goodFile = function (res, options) {
         if (shouldRemakeThumbnail) {
             makeImgThumbnailCreationRequest(options.reqPathArr);
         };
+        return 0;
     };
     // Normal file
     fs.readFile(getRealFsPath(options.reqPathArr), function (err, stdout, stderr) {
