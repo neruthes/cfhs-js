@@ -257,6 +257,13 @@ const getImgThumbnailFilePath = function (reqPathArr) {
     let imgCachePath = `${imgCacheDir}/${pathHash}`;
     return imgCachePath;
 };
+const getImgThumbnailFilePath_new = function (reqPathArr) {
+    // Using pregenerated thumbnails
+    let imgDirFsPath = getRealFsPath(reqPathArr.slice(0, reqPathArr.length - 1));
+    let imgFileName = reqPathArr[reqPathArr.length-1];
+    let imgCachePath = `${imgDirFsPath}/.tbcache/img/${imgFileName}`;
+    return imgCachePath;
+};
 const makeImgThumbnailCache = function (jobPtr) {
     ImgThumbnailCreationActiveObjId = jobPtr.jobId;
     let reqPathArr = jobPtr.reqPathArr;
@@ -393,7 +400,7 @@ makeResponse.goodFile = function (res, options) {
     // Serve thumbnail
     if (options.parsedParams.thumbnail === 'true' && ['png','jpg','jpeg','gif'].indexOf(myFileExtName) != -1) {
         // Must be an image!
-        let imgTbPath = getImgThumbnailFilePath(options.reqPathArr);
+        let imgTbPath = getImgThumbnailFilePath_new(options.reqPathArr);
         let shouldRemakeThumbnail = false;
         let imgRawPath = getRealFsPath(options.reqPathArr);
         if (fs.existsSync(imgTbPath)) {
